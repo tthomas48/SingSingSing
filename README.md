@@ -63,3 +63,4 @@ adb shell am start -n com.singtidaltome.debug/com.singtidaltome.ui.JoinActivity
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BUSINESS_LOGIC.md](docs/BUSINESS_LOGIC.md)
+- [docs/ROBOT_KARAOKE.md](docs/ROBOT_KARAOKE.md) — future: substitute-lyrics ("robot karaoke") design
