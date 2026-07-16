@@ -10,7 +10,7 @@
 - Guests may not add a track that is already now playing or in "Up next" (already-sung history may be re-queued).
 - Skip / next moves the playhead forward; sung songs remain in history.
 - Previous moves the playhead back through history.
-- Reorder moves an upcoming item within "Up next" only (drag handles on phones).
+- Reorder moves an upcoming item within "Up next" only, via per-item up/down buttons (up on the left, down at the far right after heart/play).
 - Jump-to-track sets the playhead to any session item without discarding others.
 - When the current track is within ~2.5s of its end and something is up next, we **proactively** start the next party track (pause first) so Tidal autoplay does not win the race.
 - While launching a party track, brief foreign MediaSession metadata is ignored.
@@ -45,6 +45,6 @@
 
 - On successful track start, the accessibility service attempts to click Tidal's `lyricsButton`.
 - Guests can also tap **Open Lyrics** to request that click on demand.
-- Guest phones can tap **Load synced lyrics** to fetch LRCLIB lyrics for the current track and open them in a modal.
+- Next to the now-playing heart, guests can tap the lyrics icon to fetch LRCLIB lyrics for the current track and open a live-synced modal.
 - When LRCLIB returns LRC-timed lines, the server parses sync codes into `{ timeMs, text }` and the phone bolds the current line from WebSocket `nowPlaying.positionMs` (with client-side interpolation between snapshot updates).
-- If the now-playing track changes while the modal is open, the guest must load lyrics again for the new track.
+- If the now-playing track changes while the modal is open, the guest must open lyrics again for the new track.

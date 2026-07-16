@@ -2,12 +2,13 @@ const state = {
   guest: JSON.parse(localStorage.getItem("singGuest") || "null"),
   snapshot: null,
   addTab: "library",
-  drag: null,
   lastSearchQuery: "",
   lastSearchTracks: [],
   artistBrowse: null,
   lyrics: {
     open: false,
+    loading: false,
+    loadId: 0,
     lines: [],
     trackId: null,
     activeIndex: -1,
@@ -39,8 +40,8 @@ const els = {
   nowArtist: document.getElementById("nowArtist"),
   nowBy: document.getElementById("nowBy"),
   nowHeart: document.getElementById("nowHeart"),
+  nowLyrics: document.getElementById("nowLyrics"),
   openLyrics: document.getElementById("openLyrics"),
-  loadLyrics: document.getElementById("loadLyrics"),
   lyricsModal: document.getElementById("lyricsModal"),
   lyricsModalTitle: document.getElementById("lyricsModalTitle"),
   lyricsModalArtist: document.getElementById("lyricsModalArtist"),
@@ -53,6 +54,9 @@ const ICONS = {
   play: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
   pause: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>`,
   heart: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.7-4.3-9.3-8.1C.7 10.1 1.4 6.6 4.4 5.2 6.3 4.3 8.5 4.8 10 6.2L12 8l2-1.8c1.5-1.4 3.7-1.9 5.6-1 3 1.4 3.7 4.9 1.7 7.7C18.7 16.7 12 21 12 21z"/></svg>`,
+  lyrics: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2H4zm0 5h16v2H4zm0 5h10v2H4zm0 5h7v2H4z"/></svg>`,
+  up: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8l6 6-1.4 1.4L12 10.8 7.4 15.4 6 14z"/></svg>`,
+  down: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16 6 10l1.4-1.4L12 13.2l4.6-4.6L18 10z"/></svg>`,
 };
 
 function updatePlayPauseButton(isPlaying) {
@@ -262,9 +266,34 @@ function renderLyricsContent(lyrics, track) {
   els.lyricsLines.innerHTML = `<p class="lyrics-status">No lyrics found.</p>`;
 }
 
+function showLyricsLoading() {
+  const track = state.snapshot?.nowPlaying?.track || null;
+  stopLyricsClock();
+  state.lyrics.open = true;
+  state.lyrics.loading = true;
+  state.lyrics.loadId = (state.lyrics.loadId || 0) + 1;
+  state.lyrics.lines = [];
+  state.lyrics.activeIndex = -1;
+  state.lyrics.trackId = track?.tidalTrackId || null;
+  state.lyrics.basePositionMs = Number(state.snapshot?.nowPlaying?.positionMs) || 0;
+  state.lyrics.baseReceivedAt = Date.now();
+  state.lyrics.isPlaying = !!state.snapshot?.nowPlaying?.isPlaying;
+  els.lyricsModalTitle.textContent = track?.title || "Lyrics";
+  els.lyricsModalArtist.textContent = track?.artist || "";
+  els.lyricsLines.innerHTML = `
+    <div class="lyrics-loading" role="status" aria-live="polite">
+      <div class="lyrics-spinner" aria-hidden="true"></div>
+      <p class="lyrics-status">Loading synced lyrics…</p>
+    </div>
+  `;
+  els.lyricsModal.classList.remove("hidden");
+  return state.lyrics.loadId;
+}
+
 function openLyricsModal(lyrics) {
   const track = state.snapshot?.nowPlaying?.track || null;
   state.lyrics.open = true;
+  state.lyrics.loading = false;
   state.lyrics.trackId = track?.tidalTrackId || null;
   state.lyrics.basePositionMs = Number(state.snapshot?.nowPlaying?.positionMs) || 0;
   state.lyrics.baseReceivedAt = Date.now();
@@ -280,6 +309,8 @@ function openLyricsModal(lyrics) {
 function closeLyricsModal() {
   stopLyricsClock();
   state.lyrics.open = false;
+  state.lyrics.loading = false;
+  state.lyrics.loadId = (state.lyrics.loadId || 0) + 1;
   state.lyrics.lines = [];
   state.lyrics.trackId = null;
   state.lyrics.activeIndex = -1;
@@ -340,11 +371,25 @@ function favoriteTrack(track, { alreadyHearted = false } = {}) {
   });
 }
 
-function updateNowHeart(snapshot) {
+function updateNowActions(snapshot) {
+  const track = snapshot?.nowPlaying?.track;
+  const hasTrack = !!track?.tidalTrackId;
+
+  if (els.nowLyrics) {
+    if (!hasTrack) {
+      els.nowLyrics.classList.add("hidden");
+      els.nowLyrics.onclick = null;
+    } else {
+      els.nowLyrics.classList.remove("hidden");
+      els.nowLyrics.innerHTML = ICONS.lyrics;
+      els.nowLyrics.disabled = false;
+      els.nowLyrics.onclick = () => loadLiveLyrics(els.nowLyrics);
+    }
+  }
+
   const btn = els.nowHeart;
   if (!btn) return;
-  const track = snapshot?.nowPlaying?.track;
-  if (!track?.tidalTrackId) {
+  if (!hasTrack) {
     btn.classList.add("hidden");
     btn.onclick = null;
     return;
@@ -364,6 +409,22 @@ function updateNowHeart(snapshot) {
   };
 }
 
+async function loadLiveLyrics(triggerBtn) {
+  const loadId = showLyricsLoading();
+  try {
+    if (triggerBtn) triggerBtn.disabled = true;
+    const lyrics = await api("/api/lyrics");
+    if (!state.lyrics.open || state.lyrics.loadId !== loadId) return;
+    openLyricsModal(lyrics);
+  } catch (error) {
+    if (!state.lyrics.open || state.lyrics.loadId !== loadId) return;
+    state.lyrics.loading = false;
+    els.lyricsLines.innerHTML = `<p class="lyrics-status">${escapeHtml(error.message)}</p>`;
+  } finally {
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+}
+
 function renderSnapshot(snapshot) {
   state.snapshot = snapshot;
   const np = snapshot.nowPlaying || {};
@@ -371,7 +432,7 @@ function renderSnapshot(snapshot) {
   els.nowArtist.textContent = np.track?.artist || "";
   els.nowBy.textContent = np.addedByName ? `Queued by ${np.addedByName}` : "";
   updatePlayPauseButton(!!np.isPlaying);
-  updateNowHeart(snapshot);
+  updateNowActions(snapshot);
 
   const inLibrary = libraryTrackSet(snapshot);
   els.queueList.innerHTML = "";
@@ -392,7 +453,7 @@ function renderSnapshot(snapshot) {
 
   upcoming.forEach((item, index) => {
     els.queueList.appendChild(
-      buildQueueItem(item, { history: false, index, inLibrary }),
+      buildQueueItem(item, { history: false, index, count: upcoming.length, inLibrary }),
     );
   });
 
@@ -441,15 +502,17 @@ function scrollQueueToUpcoming() {
   }
 }
 
-function buildQueueItem(item, { history, index = 0, inLibrary }) {
+function buildQueueItem(item, { history, index = 0, count = 0, inLibrary }) {
   const li = document.createElement("li");
   li.className = history ? "queue-item history" : "queue-item";
   li.dataset.itemId = item.id;
   if (!history) li.dataset.index = String(index);
   const hearted = inLibrary.has(item.track.tidalTrackId);
+  const canMoveUp = index > 0;
+  const canMoveDown = index < count - 1;
   li.innerHTML = history
     ? `
-      <span class="drag-spacer" aria-hidden="true"></span>
+      <span class="reorder-spacer" aria-hidden="true"></span>
       <div>
         <strong>${escapeHtml(item.track.title)}</strong>
         <span>${escapeHtml(item.track.artist)} · added by ${escapeHtml(item.addedByName)}</span>
@@ -459,7 +522,7 @@ function buildQueueItem(item, { history, index = 0, inLibrary }) {
       </div>
     `
     : `
-      <span class="drag-handle" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
+      <button type="button" class="reorder-btn" data-move-up aria-label="Move up" ${canMoveUp ? "" : "disabled"}>${ICONS.up}</button>
       <div>
         <strong>${escapeHtml(item.track.title)}</strong>
         <span>${escapeHtml(item.track.artist)} · added by ${escapeHtml(item.addedByName)}</span>
@@ -467,77 +530,37 @@ function buildQueueItem(item, { history, index = 0, inLibrary }) {
       <div class="queue-actions">
         <button type="button" class="heart ${hearted ? "filled" : ""}" data-heart aria-label="${hearted ? "In library" : "Add to karaoke library"}">${ICONS.heart}</button>
         <button type="button" data-play aria-label="Play this track">${ICONS.play}</button>
+        <button type="button" class="reorder-btn" data-move-down aria-label="Move down" ${canMoveDown ? "" : "disabled"}>${ICONS.down}</button>
       </div>
     `;
-  bindQueueItem(li, item, { history, hearted });
+  bindQueueItem(li, item, { history, hearted, index });
   return li;
 }
 
-function clearDropTarget() {
-  els.queueList.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+async function moveQueueItem(item, toIndex) {
+  try {
+    const snapshot = await withGuest((guest) =>
+      api("/api/queue/reorder", {
+        method: "POST",
+        body: JSON.stringify({ guestId: guest.id, itemId: item.id, toIndex }),
+      }),
+    );
+    renderSnapshot(snapshot);
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
-function bindPointerReorder(handle, li, item) {
-  handle.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 && event.pointerType === "mouse") return;
-    event.preventDefault();
-    handle.setPointerCapture(event.pointerId);
-    state.drag = {
-      itemId: item.id,
-      fromIndex: Number(li.dataset.index),
-      pointerId: event.pointerId,
-      dropIndex: Number(li.dataset.index),
-    };
-    li.classList.add("dragging");
-  });
-
-  handle.addEventListener("pointermove", (event) => {
-    const drag = state.drag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest(".queue-item:not(.history)");
-    clearDropTarget();
-    if (!row || row === li) {
-      drag.dropIndex = drag.fromIndex;
-      return;
-    }
-    row.classList.add("drop-target");
-    drag.dropIndex = Number(row.dataset.index);
-  });
-
-  const endDrag = async (event) => {
-    const drag = state.drag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    try {
-      handle.releasePointerCapture(event.pointerId);
-    } catch (_) {
-      /* already released */
-    }
-    li.classList.remove("dragging");
-    clearDropTarget();
-    const { itemId, fromIndex, dropIndex } = drag;
-    state.drag = null;
-    if (dropIndex === fromIndex || Number.isNaN(dropIndex)) return;
-    try {
-      const snapshot = await withGuest((guest) =>
-        api("/api/queue/reorder", {
-          method: "POST",
-          body: JSON.stringify({ guestId: guest.id, itemId, toIndex: dropIndex }),
-        }),
-      );
-      renderSnapshot(snapshot);
-    } catch (error) {
-      showToast(error.message);
-    }
-  };
-
-  handle.addEventListener("pointerup", endDrag);
-  handle.addEventListener("pointercancel", endDrag);
-}
-
-function bindQueueItem(li, item, { history, hearted }) {
+function bindQueueItem(li, item, { history, hearted, index = 0 }) {
   if (!history) {
-    const handle = li.querySelector(".drag-handle");
-    if (handle) bindPointerReorder(handle, li, item);
+    const upBtn = li.querySelector("[data-move-up]");
+    if (upBtn && !upBtn.disabled) {
+      upBtn.addEventListener("click", () => moveQueueItem(item, index - 1));
+    }
+    const downBtn = li.querySelector("[data-move-down]");
+    if (downBtn && !downBtn.disabled) {
+      downBtn.addEventListener("click", () => moveQueueItem(item, index + 1));
+    }
   }
 
   li.querySelector("[data-play]").addEventListener("click", async () => {
@@ -762,18 +785,6 @@ els.openLyrics.addEventListener("click", async () => {
     showToast("Asked Tidal to open lyrics", { ok: true });
   } catch (error) {
     showToast(error.message);
-  }
-});
-
-els.loadLyrics.addEventListener("click", async () => {
-  try {
-    els.loadLyrics.disabled = true;
-    const lyrics = await api("/api/lyrics");
-    openLyricsModal(lyrics);
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    els.loadLyrics.disabled = false;
   }
 });
 

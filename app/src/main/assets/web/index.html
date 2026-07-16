@@ -29,7 +29,10 @@
           <p class="eyebrow">Now singing</p>
           <div class="nowPlaying-title-row">
             <h2 id="nowTitle">Nothing yet</h2>
-            <button type="button" id="nowHeart" class="heart-btn hidden" aria-label="Add to karaoke library"></button>
+            <div class="nowPlaying-actions">
+              <button type="button" id="nowLyrics" class="now-action-btn hidden" aria-label="Live lyrics"></button>
+              <button type="button" id="nowHeart" class="now-action-btn heart-btn hidden" aria-label="Add to karaoke library"></button>
+            </div>
           </div>
           <p id="nowArtist" class="muted"></p>
           <p id="nowBy" class="muted"></p>
@@ -64,14 +67,6 @@
           <ul id="messageList" class="list messages"></ul>
         </section>
       </div>
-
-      <section class="lyrics">
-        <div class="row between">
-          <h3>Phone lyrics</h3>
-          <button type="button" id="loadLyrics" class="secondary">Load synced lyrics</button>
-        </div>
-        <p class="muted tiny">Opens a karaoke-style modal synced to the song playing on the TV.</p>
-      </section>
     </section>
   </main>
 
@@ -80,7 +75,7 @@
     <div class="modal-sheet panel lyrics-modal-sheet">
       <div class="row between">
         <div>
-          <p class="eyebrow">Phone lyrics</p>
+          <p class="eyebrow">Live lyrics</p>
           <h2 id="lyricsModalTitle">Lyrics</h2>
           <p id="lyricsModalArtist" class="muted"></p>
         </div>

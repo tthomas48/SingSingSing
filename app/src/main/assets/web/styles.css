@@ -104,6 +104,13 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
   flex: 1;
   min-width: 0;
 }
+.nowPlaying-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+}
+.now-action-btn,
 .heart-btn {
   flex-shrink: 0;
   width: 44px;
@@ -117,9 +124,11 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
   color: var(--text);
   border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
 }
+.now-action-btn svg,
 .heart-btn svg { width: 20px; height: 20px; fill: currentColor; }
 .heart-btn.filled { color: #ff6b8a; }
 .heart-btn.filled svg { fill: currentColor; }
+.now-action-btn.hidden,
 .heart-btn.hidden { display: none; }
 
 .result button.added,
@@ -217,22 +226,25 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
   font-weight: 400;
   color: var(--muted);
 }
-.queue li.queue-item.dragging { opacity: 0.55; }
-.queue li.queue-item.drop-target {
-  outline: 1px dashed color-mix(in srgb, var(--accent, #6ecbff) 70%, transparent);
-  outline-offset: 2px;
+.reorder-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d1728;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
 }
-.drag-handle {
-  color: var(--muted);
-  font-size: 1.1rem;
-  letter-spacing: 0.05em;
-  user-select: none;
-  padding: 8px 4px;
-  cursor: grab;
-  touch-action: none;
+.reorder-btn svg { width: 18px; height: 18px; fill: currentColor; }
+.reorder-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
-.drag-spacer {
-  width: 1.4rem;
+.reorder-spacer {
+  width: 40px;
 }
 .results-header {
   display: flex;
@@ -288,7 +300,6 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
 }
 
 .messages li { margin-bottom: 8px; }
-.lyrics { margin-top: 22px; }
 
 .lyrics-modal-sheet {
   display: flex;
@@ -327,6 +338,29 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
 .lyrics-status {
   color: var(--muted);
   margin: 12px 0 0;
+}
+.lyrics-loading {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 14px;
+  min-height: 28vh;
+  padding: 24px 8px;
+  text-align: center;
+}
+.lyrics-loading .lyrics-status {
+  margin: 0;
+}
+.lyrics-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-top-color: var(--accent);
+  animation: lyrics-spin 0.7s linear infinite;
+}
+@keyframes lyrics-spin {
+  to { transform: rotate(360deg); }
 }
 
 .modal {

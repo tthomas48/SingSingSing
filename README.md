@@ -66,7 +66,7 @@ Tidal's device-code login is only available to Tidal's own apps. This project us
 - Add songs to the shared queue with attribution messages
 - Play / pause / skip / previous / reorder / jump-to-track
 - Heart a queued track into the karaoke library playlist
-- Open lyrics on the TV; load synced lyrics on the phone (LRCLIB)
+- Open lyrics on the TV; tap the lyrics icon next to now-playing for live synced lyrics on the phone (LRCLIB)
 
 ## Docs
 
