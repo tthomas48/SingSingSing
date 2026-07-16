@@ -2,12 +2,16 @@ package com.singtidaltome.server
 
 import android.content.Context
 import android.util.Log
+import com.singtidaltome.SingAlongApp
 import com.singtidaltome.bridge.BridgeQueueHolder
 import com.singtidaltome.party.AddTrackRequest
+import com.singtidaltome.party.FavoriteTrackRequest
 import com.singtidaltome.party.GuestActionRequest
 import com.singtidaltome.party.JoinRequest
 import com.singtidaltome.party.JoinResponse
 import com.singtidaltome.party.PartySession
+import com.singtidaltome.party.PlayQueueItemRequest
+import com.singtidaltome.party.ReorderQueueRequest
 import com.singtidaltome.party.SearchRequest
 import com.singtidaltome.party.SearchResponse
 import io.ktor.http.ContentType
@@ -63,8 +67,11 @@ class PartyServer(
             install(StatusPages) {
                 exception<Throwable> { call, cause ->
                     Log.e(TAG, "Request failed", cause)
+                    val message = cause.message
+                        ?.takeIf { it.isNotBlank() && !it.contains("http", ignoreCase = true) }
+                        ?: "Something went wrong — try again"
                     call.respondText(
-                        text = """{"error":${json.encodeToString(cause.message ?: "request failed")}}""",
+                        text = """{"error":${json.encodeToString(message)}}""",
                         contentType = ContentType.Application.Json,
                         status = HttpStatusCode.BadRequest,
                     )
@@ -79,6 +86,61 @@ class PartyServer(
                 }
                 get("/styles.css") {
                     call.respondText(assetText("web/styles.css"), ContentType.Text.CSS)
+                }
+                get("/oauth/callback") {
+                    val error = call.request.queryParameters["error"]
+                    val errorDescription = call.request.queryParameters["error_description"]
+                    if (!error.isNullOrBlank()) {
+                        call.respondText(
+                            oauthResultHtml(
+                                title = "Sign-in cancelled",
+                                body = errorDescription ?: error,
+                                ok = false,
+                            ),
+                            ContentType.Text.Html,
+                            HttpStatusCode.BadRequest,
+                        )
+                        return@get
+                    }
+                    val code = call.request.queryParameters["code"]
+                    val state = call.request.queryParameters["state"]
+                    if (code.isNullOrBlank()) {
+                        call.respondText(
+                            oauthResultHtml(
+                                title = "Missing code",
+                                body = "Tidal did not return an authorization code.",
+                                ok = false,
+                            ),
+                            ContentType.Text.Html,
+                            HttpStatusCode.BadRequest,
+                        )
+                        return@get
+                    }
+                    try {
+                        val auth = SingAlongApp.instance.tidalAuth
+                        auth.completePkceLogin(code = code, state = state)
+                        runCatching { SingAlongApp.instance.tidalCatalog.currentUserId() }
+                        SingAlongApp.instance.partySession.refreshLibrarySnapshot()
+                        call.respondText(
+                            oauthResultHtml(
+                                title = "Signed in",
+                                body = "You can close this tab and return to the TV. Then choose your karaoke library playlist in Settings.",
+                                ok = true,
+                            ),
+                            ContentType.Text.Html,
+                        )
+                    } catch (error: Throwable) {
+                        Log.e(TAG, "OAuth callback failed", error)
+                        call.respondText(
+                            oauthResultHtml(
+                                title = "Sign-in failed",
+                                body = error.message ?: "Unknown error",
+                                ok = false,
+                            ),
+                            ContentType.Text.Html,
+                            HttpStatusCode.BadRequest,
+                        )
+                    }
                 }
                 get("/api/health") {
                     call.respondText(
@@ -96,13 +158,45 @@ class PartyServer(
                 }
                 post("/api/search") {
                     val body = call.receive<SearchRequest>()
-                    val tracks = partySession.search(body.query)
+                    Log.i(TAG, "POST /api/search query='${body.query}'")
+                    try {
+                        val tracks = partySession.search(body.query)
+                        Log.i(TAG, "POST /api/search ok count=${tracks.size}")
+                        call.respond(SearchResponse(tracks = tracks))
+                    } catch (error: Throwable) {
+                        Log.e(TAG, "POST /api/search failed query='${body.query}'", error)
+                        throw error
+                    }
+                }
+                get("/api/artists/{artistId}/tracks") {
+                    val artistId = call.parameters["artistId"].orEmpty()
+                    Log.i(TAG, "GET /api/artists/$artistId/tracks")
+                    val tracks = partySession.artistTracks(artistId)
                     call.respond(SearchResponse(tracks = tracks))
+                }
+                get("/api/library") {
+                    val query = call.request.queryParameters["q"].orEmpty()
+                    call.respond(partySession.libraryTracks(query))
+                }
+                post("/api/library/favorite") {
+                    val body = call.receive<FavoriteTrackRequest>()
+                    partySession.favoriteTrack(body.guestId, body.track)
+                    call.respond(partySession.snapshot.value)
                 }
                 post("/api/queue") {
                     val body = call.receive<AddTrackRequest>()
                     val item = partySession.addTrack(body.guestId, body.track)
                     call.respond(item)
+                }
+                post("/api/queue/reorder") {
+                    val body = call.receive<ReorderQueueRequest>()
+                    partySession.reorderQueue(body.guestId, body.itemId, body.toIndex)
+                    call.respond(partySession.snapshot.value)
+                }
+                post("/api/queue/play") {
+                    val body = call.receive<PlayQueueItemRequest>()
+                    partySession.jumpTo(body.guestId, body.itemId)
+                    call.respond(partySession.snapshot.value)
                 }
                 post("/api/skip") {
                     val body = call.receive<GuestActionRequest>()
@@ -127,6 +221,11 @@ class PartyServer(
                 post("/api/next") {
                     val body = call.receive<GuestActionRequest>()
                     partySession.nextTransport(body.guestId)
+                    call.respond(partySession.snapshot.value)
+                }
+                post("/api/open-lyrics") {
+                    val body = call.receive<GuestActionRequest>()
+                    partySession.openLyrics(body.guestId)
                     call.respond(partySession.snapshot.value)
                 }
                 get("/api/lyrics") {
@@ -172,6 +271,24 @@ class PartyServer(
     }
 
     fun joinUrl(): String = "http://${lanIp()}:$port/"
+
+    fun oauthCallbackUrl(): String = "http://${lanIp()}:$port/oauth/callback"
+
+    private fun oauthResultHtml(title: String, body: String, ok: Boolean): String {
+        val color = if (ok) "#3ddc97" else "#ff6b6b"
+        return """
+            <!doctype html>
+            <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+            <title>$title</title>
+            <style>
+              body{font-family:system-ui,sans-serif;background:#0b1220;color:#f4f7fb;display:grid;place-items:center;min-height:100vh;margin:0}
+              main{max-width:28rem;padding:2rem;background:#152238;border-radius:18px}
+              h1{color:$color;margin:0 0 .75rem}
+              p{line-height:1.45;color:#9db0c7}
+            </style></head>
+            <body><main><h1>$title</h1><p>${body.replace("<", "&lt;")}</p></main></body></html>
+        """.trimIndent()
+    }
 
     private fun lanIp(): String {
         val interfaces = NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()

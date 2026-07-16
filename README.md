@@ -51,13 +51,22 @@ adb shell am start -n com.singtidaltome.debug/com.singtidaltome.ui.JoinActivity
 4. Start Tidal and play anything once so a media session exists.
 5. Scan the QR code from phones on the same Wi‑Fi.
 
+### Karaoke library (optional)
+
+Tidal's device-code login is only available to Tidal's own apps. This project uses **Authorization Code + PKCE** instead:
+
+1. In [developer.tidal.com](https://developer.tidal.com) → your app → **Redirect URIs**, add the callback shown on the TV when you tap **Sign in to Tidal** (it looks like `http://<tv-lan-ip>:8787/oauth/callback`).
+2. On the TV: **Settings → Sign in to Tidal** → open the login URL / QR on your phone (same Wi‑Fi) and approve.
+3. After the phone shows “Signed in”, on the TV choose **Choose karaoke library playlist**.
+
 ## Guest features
 
 - Join with a name
-- Search Tidal catalog
+- Browse the karaoke library playlist / search all Tidal
 - Add songs to the shared queue with attribution messages
-- Play / pause / skip / previous
-- Load synced lyrics on the phone (LRCLIB)
+- Play / pause / skip / previous / reorder / jump-to-track
+- Heart a queued track into the karaoke library playlist
+- Open lyrics on the TV; load synced lyrics on the phone (LRCLIB)
 
 ## Docs
 

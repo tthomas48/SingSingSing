@@ -18,6 +18,7 @@ class PartySession(
     private val tidalCatalog: TidalCatalogClient,
     private val lrcLibClient: LrcLibClient,
     private val queue: PartyQueue = PartyQueue(),
+    private val nowMs: () -> Long = { System.currentTimeMillis() },
 ) {
     private val mutex = Mutex()
     private val guests = linkedMapOf<String, Guest>()
@@ -29,6 +30,10 @@ class PartySession(
     private var positionMs: Long = 0
     private var isPlaying: Boolean = false
     private var lastObservedTidalTrackId: String? = null
+    /** Ignore foreign metadata while we are launching a party track. */
+    private var playLaunchUntilEpochMs: Long = 0
+    /** Prevent double near-end advances for the same now-playing item. */
+    private var nearEndAdvanceArmed: Boolean = true
 
     private val _snapshot = MutableStateFlow(buildSnapshotLocked())
     val snapshot: StateFlow<PartySnapshot> = _snapshot.asStateFlow()
@@ -49,6 +54,10 @@ class PartySession(
         publishLocked()
     }
 
+    suspend fun refreshLibrarySnapshot() = mutex.withLock {
+        publishLocked()
+    }
+
     suspend fun join(name: String): Guest = mutex.withLock {
         val cleaned = name.trim().ifBlank { "Guest" }.take(24)
         val guest = Guest(id = UUID.randomUUID().toString(), name = cleaned)
@@ -61,6 +70,28 @@ class PartySession(
     suspend fun search(query: String): List<TrackRef> {
         return tidalCatalog.searchTracks(query)
     }
+
+    suspend fun artistTracks(artistId: String): List<TrackRef> {
+        return tidalCatalog.getArtistTracks(artistId)
+    }
+
+    suspend fun libraryTracks(query: String = ""): LibraryResponse {
+        if (!tidalCatalog.isLibraryConfigured()) {
+            return LibraryResponse(tracks = emptyList(), configured = false)
+        }
+        val tracks = if (query.isBlank()) {
+            tidalCatalog.getLibraryTracks()
+        } else {
+            tidalCatalog.searchLibrary(query)
+        }
+        return LibraryResponse(
+            tracks = tracks,
+            playlistName = tidalCatalog.libraryPlaylistName(),
+            configured = true,
+        )
+    }
+
+    suspend fun listHostPlaylists(): List<PlaylistSummary> = tidalCatalog.listUserPlaylists()
 
     suspend fun addTrack(guestId: String, track: TrackRef): QueueItem = mutex.withLock {
         val guest = guests[guestId] ?: error("Unknown guest")
@@ -78,6 +109,46 @@ class PartySession(
             startNextLocked()
         }
         item
+    }
+
+    suspend fun reorderQueue(guestId: String, itemId: String, toIndex: Int) = mutex.withLock {
+        val guest = requireGuestLocked(guestId)
+        if (!queue.reorder(itemId, toIndex)) {
+            error("Queue item not found")
+        }
+        addMessageLocked("${guest.name} reordered the queue")
+        publishLocked()
+    }
+
+    suspend fun jumpTo(guestId: String, itemId: String) = mutex.withLock {
+        val guest = requireGuestLocked(guestId)
+        val item = queue.jumpTo(itemId) ?: error("Queue item not found")
+        addMessageLocked("${guest.name} jumped to ${item.track.title}")
+        playItemLocked(item)
+        publishLocked()
+    }
+
+    suspend fun favoriteTrack(guestId: String, track: TrackRef) {
+        mutex.withLock {
+            requireGuestLocked(guestId)
+            if (!tidalCatalog.isLibraryConfigured()) {
+                error("Host hasn't set a karaoke library yet")
+            }
+        }
+        tidalCatalog.addTrackToLibrary(track.tidalTrackId)
+        mutex.withLock {
+            val guest = requireGuestLocked(guestId)
+            val libraryName = tidalCatalog.libraryPlaylistName() ?: "library"
+            addMessageLocked("${guest.name} hearted ${track.title} into $libraryName")
+            publishLocked()
+        }
+    }
+
+    suspend fun openLyrics(guestId: String) = mutex.withLock {
+        requireGuestLocked(guestId)
+        val opener = lyricsOpener
+            ?: error("Enable accessibility in Settings to open Tidal lyrics")
+        opener.openLyricsBestEffort()
     }
 
     suspend fun skip(guestId: String) = mutex.withLock {
@@ -130,15 +201,31 @@ class PartySession(
         this.isPlaying = playing
 
         val our = queue.nowPlaying()
-        if (our != null && trackId != null && trackId != our.track.tidalTrackId) {
-            // Tidal advanced on its own; reclaim control with our next track if we have one.
-            if (lastObservedTidalTrackId != null && trackId != lastObservedTidalTrackId) {
-                if (queue.snapshotQueue().isNotEmpty()) {
-                    startNextLocked(skipCurrent = true)
+        val launching = nowMs() < playLaunchUntilEpochMs
+
+        if (our != null && !launching) {
+            if (shouldAdvanceNearEndLocked(our)) {
+                nearEndAdvanceArmed = false
+                bridge?.pause()
+                startNextLocked(skipCurrent = true)
+                return@withLock
+            }
+
+            if (trackId != null && trackId != our.track.tidalTrackId) {
+                // Tidal advanced on its own; reclaim with our next track if we have one.
+                if (lastObservedTidalTrackId != null && trackId != lastObservedTidalTrackId) {
+                    if (queue.snapshotQueue().isNotEmpty()) {
+                        bridge?.pause()
+                        startNextLocked(skipCurrent = true)
+                        return@withLock
+                    }
                 }
             }
         }
-        lastObservedTidalTrackId = trackId ?: lastObservedTidalTrackId
+
+        if (!launching || trackId == null || trackId == our?.track?.tidalTrackId) {
+            lastObservedTidalTrackId = trackId ?: lastObservedTidalTrackId
+        }
 
         if (our == null && !title.isNullOrBlank()) {
             // Reflect Tidal's current track when our queue has not started yet.
@@ -170,6 +257,18 @@ class PartySession(
     private fun requireGuestLocked(guestId: String): Guest =
         guests[guestId] ?: error("Unknown guest")
 
+    private fun shouldAdvanceNearEndLocked(our: QueueItem): Boolean {
+        if (!nearEndAdvanceArmed) return false
+        if (queue.snapshotQueue().isEmpty()) return false
+        val durationMs = our.track.durationSeconds * 1000L
+        if (durationMs <= 0L) return false
+        val remaining = durationMs - positionMs
+        if (remaining in 0..NEAR_END_WINDOW_MS) return true
+        // Track ended / paused in the final window.
+        if (!isPlaying && remaining in 0..(NEAR_END_WINDOW_MS + 1_000L)) return true
+        return false
+    }
+
     private suspend fun startNextLocked(skipCurrent: Boolean = false) {
         val next = if (skipCurrent) queue.skip() else {
             if (queue.nowPlaying() == null) queue.advance() else null
@@ -177,7 +276,9 @@ class PartySession(
         if (next != null) {
             playItemLocked(next)
         } else if (skipCurrent) {
-            bridge?.skipToNext()
+            // Do not advance Tidal's own queue/radio — pause instead.
+            bridge?.pause()
+            isPlaying = false
         }
         publishLocked()
     }
@@ -188,13 +289,17 @@ class PartySession(
             addMessageLocked("Waiting for Tidal bridge before playing ${item.track.title}")
             return
         }
+        playLaunchUntilEpochMs = nowMs() + PLAY_LAUNCH_GRACE_MS
+        nearEndAdvanceArmed = true
         val played = bridge.playTrack(item.track)
         if (!played) {
             addMessageLocked("Could not start ${item.track.title} on Tidal")
+            playLaunchUntilEpochMs = 0
         } else {
             isPlaying = true
             positionMs = 0
             lastObservedTidalTrackId = item.track.tidalTrackId
+            playLaunchUntilEpochMs = nowMs() + PLAY_LAUNCH_GRACE_MS
             lyricsOpener?.openLyricsBestEffort()
         }
     }
@@ -217,6 +322,7 @@ class PartySession(
         return PartySnapshot(
             guests = guests.values.toList(),
             queue = queue.snapshotQueue(),
+            history = queue.snapshotHistory(),
             nowPlaying = NowPlaying(
                 track = now?.track,
                 addedByName = now?.addedByName,
@@ -226,6 +332,9 @@ class PartySession(
             messages = messages.toList().asReversed(),
             bridgeReady = bridgeReady,
             tidalConfigured = tidalCatalog.isConfigured(),
+            libraryConfigured = tidalCatalog.isLibraryConfigured(),
+            libraryPlaylistName = tidalCatalog.libraryPlaylistName(),
+            libraryTrackIds = tidalCatalog.cachedLibraryTrackIds().toList(),
         )
     }
 
@@ -233,5 +342,10 @@ class PartySession(
         val snap = buildSnapshotLocked()
         _snapshot.value = snap
         _events.tryEmit(snap)
+    }
+
+    companion object {
+        private const val NEAR_END_WINDOW_MS = 2_500L
+        private const val PLAY_LAUNCH_GRACE_MS = 4_000L
     }
 }

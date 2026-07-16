@@ -31,28 +31,30 @@
           <p id="nowArtist" class="muted"></p>
           <p id="nowBy" class="muted"></p>
         </div>
-        <div class="transport">
-          <button type="button" data-action="previous">Prev</button>
-          <button type="button" data-action="pause">Pause</button>
-          <button type="button" data-action="play">Play</button>
-          <button type="button" data-action="skip">Skip</button>
+        <div class="transport" role="group" aria-label="Playback controls">
+          <button type="button" class="icon-btn" data-action="previous" aria-label="Previous">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="playPauseBtn" data-action="toggle-play" aria-label="Play">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button type="button" class="icon-btn" data-action="skip" aria-label="Skip">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>
+          </button>
+          <button type="button" class="text-btn" id="openLyrics" aria-label="Open lyrics on TV">Open Lyrics</button>
         </div>
       </div>
 
-      <form id="searchForm" class="search">
-        <label for="searchInput">Search Tidal</label>
-        <div class="row">
-          <input id="searchInput" placeholder="Song or artist" required />
-          <button type="submit">Search</button>
-        </div>
-      </form>
-
-      <div id="searchResults" class="results"></div>
+      <div class="addRow">
+        <button type="button" id="openAddModal" class="add-btn">Add a song</button>
+      </div>
 
       <div class="columns">
         <section>
-          <h3>Up next</h3>
-          <ul id="queueList" class="list"></ul>
+          <h3>Session queue</h3>
+          <div id="queueViewport" class="queue-viewport">
+            <ul id="queueList" class="list queue"></ul>
+          </div>
         </section>
         <section>
           <h3>Party chatter</h3>
@@ -62,13 +64,45 @@
 
       <section class="lyrics">
         <div class="row between">
-          <h3>Lyrics</h3>
-          <button type="button" id="loadLyrics">Load synced lyrics</button>
+          <h3>Phone lyrics</h3>
+          <button type="button" id="loadLyrics" class="secondary">Load synced lyrics</button>
         </div>
-        <pre id="lyricsBox" class="lyricsBox">Tap load to fetch lyrics for phones (LRCLIB).</pre>
+        <pre id="lyricsBox" class="lyricsBox">Optional: fetch LRCLIB lyrics for phones.</pre>
       </section>
     </section>
   </main>
+
+  <div id="addModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-sheet panel">
+      <div class="row between">
+        <h2 id="addModalTitle">Add a song</h2>
+        <button type="button" class="secondary" data-close-modal>Close</button>
+      </div>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="library" role="tab" aria-selected="true">Library</button>
+        <button type="button" class="tab" data-tab="tidal" role="tab" aria-selected="false">Search all Tidal</button>
+      </div>
+      <form id="libraryForm" class="search">
+        <label for="libraryInput">Browse karaoke library</label>
+        <div class="row">
+          <input id="libraryInput" placeholder="Filter library songs" />
+          <button type="submit">Filter</button>
+        </div>
+        <p id="libraryHint" class="muted tiny"></p>
+      </form>
+      <form id="searchForm" class="search hidden">
+        <label for="searchInput">Search Tidal</label>
+        <div class="row">
+          <input id="searchInput" placeholder="Song or artist" />
+          <button type="submit">Search</button>
+        </div>
+      </form>
+      <div id="searchResults" class="results"></div>
+    </div>
+  </div>
+
+  <div id="toastHost" class="toast-host" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>
 </html>

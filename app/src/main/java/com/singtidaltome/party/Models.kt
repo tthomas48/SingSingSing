@@ -16,6 +16,7 @@ data class TrackRef(
     val album: String = "",
     val durationSeconds: Int = 0,
     val artworkUrl: String? = null,
+    val artistId: String? = null,
 )
 
 @Serializable
@@ -45,10 +46,14 @@ data class NowPlaying(
 data class PartySnapshot(
     val guests: List<Guest>,
     val queue: List<QueueItem>,
+    val history: List<QueueItem> = emptyList(),
     val nowPlaying: NowPlaying,
     val messages: List<PartyMessage>,
     val bridgeReady: Boolean,
     val tidalConfigured: Boolean,
+    val libraryConfigured: Boolean = false,
+    val libraryPlaylistName: String? = null,
+    val libraryTrackIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -81,6 +86,39 @@ data class SearchRequest(
 @Serializable
 data class SearchResponse(
     val tracks: List<TrackRef>,
+)
+
+@Serializable
+data class ReorderQueueRequest(
+    val guestId: String,
+    val itemId: String,
+    val toIndex: Int,
+)
+
+@Serializable
+data class PlayQueueItemRequest(
+    val guestId: String,
+    val itemId: String,
+)
+
+@Serializable
+data class FavoriteTrackRequest(
+    val guestId: String,
+    val track: TrackRef,
+)
+
+@Serializable
+data class LibraryResponse(
+    val tracks: List<TrackRef>,
+    val playlistName: String? = null,
+    val configured: Boolean = false,
+)
+
+@Serializable
+data class PlaylistSummary(
+    val id: String,
+    val name: String,
+    val numberOfItems: Int = 0,
 )
 
 @Serializable

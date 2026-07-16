@@ -12,11 +12,17 @@ import org.junit.Test
 class PartySessionTest {
     private class FakeBridge : TidalBridge {
         val played = mutableListOf<TrackRef>()
+        var pauseCount = 0
+        var skipToNextCount = 0
         var ready = true
         override fun isReady() = ready
         override fun play() = Unit
-        override fun pause() = Unit
-        override fun skipToNext() = Unit
+        override fun pause() {
+            pauseCount += 1
+        }
+        override fun skipToNext() {
+            skipToNextCount += 1
+        }
         override fun skipToPrevious() = Unit
         override fun skipToQueueItem(queueItemId: Long) = true
         override suspend fun playTrack(track: TrackRef): Boolean {
@@ -26,12 +32,16 @@ class PartySessionTest {
         override fun readQueue(): List<BridgeQueueItem> = emptyList()
     }
 
-    private fun session(bridge: FakeBridge = FakeBridge()): Pair<PartySession, FakeBridge> {
+    private fun session(
+        bridge: FakeBridge = FakeBridge(),
+        nowMs: () -> Long = { System.currentTimeMillis() },
+    ): Pair<PartySession, FakeBridge> {
         val auth = TidalAuthClient(clientId = "", clientSecret = "")
         val catalog = TidalCatalogClient(authClient = auth, countryCode = "US")
         val party = PartySession(
             tidalCatalog = catalog,
             lrcLibClient = LrcLibClient(),
+            nowMs = nowMs,
         )
         party.attachBridge(bridge)
         return party to bridge
@@ -69,5 +79,96 @@ class PartySessionTest {
         party.skip(guest.id)
         assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
         assertThat(party.snapshot.value.nowPlaying.track?.title).isEqualTo("Two")
+    }
+
+    @Test
+    fun reorderAndJumpToWorkWithAttribution() = runTest {
+        val (party, bridge) = session()
+        val guest = party.join("Bee")
+        party.addTrack(guest.id, TrackRef("1", "One", "A"))
+        party.addTrack(guest.id, TrackRef("2", "Two", "B"))
+        party.addTrack(guest.id, TrackRef("3", "Three", "C"))
+
+        val secondId = party.snapshot.value.queue[0].id
+        val thirdId = party.snapshot.value.queue[1].id
+        party.reorderQueue(guest.id, thirdId, 0)
+        assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId })
+            .containsExactly("3", "2").inOrder()
+
+        party.jumpTo(guest.id, secondId)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+        assertThat(party.snapshot.value.history.map { it.track.tidalTrackId })
+            .containsExactly("1", "3").inOrder()
+        assertThat(party.snapshot.value.queue).isEmpty()
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
+        assertThat(party.snapshot.value.messages.any { it.text.contains("jumped to Two") }).isTrue()
+    }
+
+    @Test
+    fun skipKeepsSungTracksInHistory() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A"))
+        party.addTrack(guest.id, TrackRef("2", "Two", "B"))
+        party.skip(guest.id)
+        assertThat(party.snapshot.value.history.map { it.track.tidalTrackId }).containsExactly("1")
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+    }
+
+    @Test
+    fun nearEndAdvancesToNextPartyTrackWithoutForeignMetadata() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(tidalTrackId = "1", title = "One", artist = "A", durationSeconds = 10),
+        )
+        party.addTrack(
+            guest.id,
+            TrackRef(tidalTrackId = "2", title = "Two", artist = "B", durationSeconds = 20),
+        )
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1")
+
+        // Expire play-launch grace so near-end logic is armed.
+        clock += 5_000
+        party.onTidalMetadata(
+            trackId = "1",
+            title = "One",
+            artist = "A",
+            positionMs = 8_000,
+            playing = true,
+        )
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
+        assertThat(bridge.pauseCount).isAtLeast(1)
+        assertThat(bridge.skipToNextCount).isEqualTo(0)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+        assertThat(party.snapshot.value.history.map { it.track.tidalTrackId }).containsExactly("1")
+    }
+
+    @Test
+    fun foreignTrackReclaimPausesThenPlaysNext() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A", durationSeconds = 200))
+        party.addTrack(guest.id, TrackRef("2", "Two", "B", durationSeconds = 200))
+
+        party.onTidalMetadata("1", "One", "A", positionMs = 1_000, playing = true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "999",
+            title = "Radio filler",
+            artist = "Tidal",
+            positionMs = 0,
+            playing = true,
+        )
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
+        assertThat(bridge.pauseCount).isAtLeast(1)
+        assertThat(bridge.skipToNextCount).isEqualTo(0)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
     }
 }
