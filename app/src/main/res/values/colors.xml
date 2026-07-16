@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0B1220</color>
+    <color name="bg_elevated">#152238</color>
+    <color name="accent">#3DDC97</color>
+    <color name="accent_dim">#1F8A5A</color>
+    <color name="text_primary">#F4F7FB</color>
+    <color name="text_secondary">#9DB0C7</color>
+    <color name="qr_fg">#0B1220</color>
+    <color name="qr_bg">#F4F7FB</color>
+</resources>

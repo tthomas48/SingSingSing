@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sing Tidal To Me</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="brand">Sing Tidal To Me</p>
+      <p id="statusLine" class="status">Connecting…</p>
+    </header>
+
+    <section id="joinPanel" class="panel">
+      <h1>Join the party</h1>
+      <p class="lede">Pick a name so everyone knows who queued the bangers.</p>
+      <form id="joinForm">
+        <label for="nameInput">Your name</label>
+        <input id="nameInput" name="name" maxlength="24" autocomplete="nickname" placeholder="e.g. Tim" required />
+        <button type="submit">Join</button>
+      </form>
+    </section>
+
+    <section id="partyPanel" class="panel hidden">
+      <div class="nowPlaying">
+        <div>
+          <p class="eyebrow">Now singing</p>
+          <h2 id="nowTitle">Nothing yet</h2>
+          <p id="nowArtist" class="muted"></p>
+          <p id="nowBy" class="muted"></p>
+        </div>
+        <div class="transport">
+          <button type="button" data-action="previous">Prev</button>
+          <button type="button" data-action="pause">Pause</button>
+          <button type="button" data-action="play">Play</button>
+          <button type="button" data-action="skip">Skip</button>
+        </div>
+      </div>
+
+      <form id="searchForm" class="search">
+        <label for="searchInput">Search Tidal</label>
+        <div class="row">
+          <input id="searchInput" placeholder="Song or artist" required />
+          <button type="submit">Search</button>
+        </div>
+      </form>
+
+      <div id="searchResults" class="results"></div>
+
+      <div class="columns">
+        <section>
+          <h3>Up next</h3>
+          <ul id="queueList" class="list"></ul>
+        </section>
+        <section>
+          <h3>Party chatter</h3>
+          <ul id="messageList" class="list messages"></ul>
+        </section>
+      </div>
+
+      <section class="lyrics">
+        <div class="row between">
+          <h3>Lyrics</h3>
+          <button type="button" id="loadLyrics">Load synced lyrics</button>
+        </div>
+        <pre id="lyricsBox" class="lyricsBox">Tap load to fetch lyrics for phones (LRCLIB).</pre>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

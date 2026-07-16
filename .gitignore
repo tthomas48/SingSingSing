@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+android-sdk/
+tidal_package_dump.txt
+tidal_ui.txt
+tidal_lyrics_ui.txt

@@ -1,0 +1,6 @@
+## Copy to local.properties and fill in values.
+sdk.dir=/home/YOU/Android/Sdk
+TIDAL_CLIENT_ID=
+TIDAL_CLIENT_SECRET=
+PARTY_PORT=8787
+TIDAL_COUNTRY_CODE=US

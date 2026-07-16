@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sing Tidal To Me</string>
+    <string name="join_title">Sing Tidal To Me</string>
+    <string name="join_subtitle">Scan to join the party</string>
+    <string name="join_waiting">Starting party server…</string>
+    <string name="join_url_label">Or open this on your phone:</string>
+    <string name="notification_channel_name">Party server</string>
+    <string name="notification_channel_desc">Keeps the sing-along server running</string>
+    <string name="notification_title">Sing-along party is live</string>
+    <string name="notification_text">Guests can join from phones on this Wi‑Fi</string>
+    <string name="notification_listener_label">Tidal media bridge</string>
+    <string name="lyrics_accessibility_label">Open Tidal lyrics</string>
+    <string name="permission_notification_access">Grant notification access so we can control Tidal</string>
+    <string name="permission_accessibility">Optional: enable accessibility to open Tidal lyrics</string>
+    <string name="open_notification_access">Open notification access</string>
+    <string name="open_accessibility">Open accessibility settings</string>
+    <string name="start_party">Start party</string>
+    <string name="bridge_status_ready">Tidal bridge ready</string>
+    <string name="bridge_status_waiting">Waiting for Tidal playback…</string>
+    <string name="bridge_status_missing_permission">Notification access required</string>
+</resources>
