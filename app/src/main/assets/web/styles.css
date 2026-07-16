@@ -94,6 +94,41 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
   padding-bottom: 18px;
   border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
+.nowPlaying-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nowPlaying-title-row h2 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+.heart-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d1728;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+.heart-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.heart-btn.filled { color: #ff6b8a; }
+.heart-btn.filled svg { fill: currentColor; }
+.heart-btn.hidden { display: none; }
+
+.result button.added,
+.result button.added:disabled {
+  opacity: 0.65;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--muted);
+  cursor: default;
+}
 
 .transport, .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row.between { justify-content: space-between; align-items: center; }

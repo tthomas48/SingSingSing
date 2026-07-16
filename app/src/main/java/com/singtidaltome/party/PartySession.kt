@@ -95,6 +95,9 @@ class PartySession(
 
     suspend fun addTrack(guestId: String, track: TrackRef): QueueItem = mutex.withLock {
         val guest = guests[guestId] ?: error("Unknown guest")
+        if (queue.containsActiveTrackId(track.tidalTrackId)) {
+            error("Already in the queue")
+        }
         val item = QueueItem(
             id = UUID.randomUUID().toString(),
             track = track,

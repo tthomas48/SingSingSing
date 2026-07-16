@@ -24,6 +24,14 @@ class PartyQueue {
     fun nowPlaying(): QueueItem? =
         currentIndex.takeIf { it in items.indices }?.let { items[it] }
 
+    /** True if track is now playing or still upcoming (history does not count). */
+    fun containsActiveTrackId(tidalTrackId: String): Boolean {
+        if (tidalTrackId.isBlank()) return false
+        val now = nowPlaying()
+        if (now?.track?.tidalTrackId == tidalTrackId) return true
+        return snapshotQueue().any { it.track.tidalTrackId == tidalTrackId }
+    }
+
     fun add(item: QueueItem): QueueItem {
         items.add(item)
         return item

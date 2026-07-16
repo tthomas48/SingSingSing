@@ -171,4 +171,24 @@ class PartySessionTest {
         assertThat(bridge.skipToNextCount).isEqualTo(0)
         assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
     }
+
+    @Test
+    fun rejectsDuplicateActiveTrackButAllowsAfterHistory() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A"))
+        party.addTrack(guest.id, TrackRef("2", "Two", "B"))
+
+        try {
+            party.addTrack(guest.id, TrackRef("1", "One again", "A"))
+            throw AssertionError("expected duplicate add to fail")
+        } catch (error: IllegalStateException) {
+            assertThat(error).hasMessageThat().contains("Already in the queue")
+        }
+
+        party.skip(guest.id)
+        assertThat(party.snapshot.value.history.map { it.track.tidalTrackId }).containsExactly("1")
+        party.addTrack(guest.id, TrackRef("1", "One again", "A"))
+        assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId }).containsExactly("1")
+    }
 }

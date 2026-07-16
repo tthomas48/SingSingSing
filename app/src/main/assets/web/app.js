@@ -28,6 +28,7 @@ const els = {
   nowTitle: document.getElementById("nowTitle"),
   nowArtist: document.getElementById("nowArtist"),
   nowBy: document.getElementById("nowBy"),
+  nowHeart: document.getElementById("nowHeart"),
   openLyrics: document.getElementById("openLyrics"),
   loadLyrics: document.getElementById("loadLyrics"),
   lyricsBox: document.getElementById("lyricsBox"),
@@ -146,6 +147,68 @@ function libraryTrackSet(snapshot) {
   return new Set(snapshot?.libraryTrackIds || []);
 }
 
+function activeQueuedTrackIds(snapshot) {
+  const ids = new Set();
+  const nowId = snapshot?.nowPlaying?.track?.tidalTrackId;
+  if (nowId) ids.add(nowId);
+  (snapshot?.queue || []).forEach((item) => {
+    if (item.track?.tidalTrackId) ids.add(item.track.tidalTrackId);
+  });
+  return ids;
+}
+
+function markAddButtonAdded(button) {
+  if (!button) return;
+  button.textContent = "Added";
+  button.disabled = true;
+  button.classList.add("added");
+}
+
+function favoriteTrack(track, { alreadyHearted = false } = {}) {
+  if (alreadyHearted) {
+    showToast("Already in the karaoke library", { ok: true });
+    return Promise.resolve(null);
+  }
+  if (!state.snapshot?.libraryConfigured) {
+    showToast("Host hasn't set a karaoke library yet");
+    return Promise.resolve(null);
+  }
+  return withGuest((guest) =>
+    api("/api/library/favorite", {
+      method: "POST",
+      body: JSON.stringify({ guestId: guest.id, track }),
+    }),
+  ).then((snapshot) => {
+    renderSnapshot(snapshot);
+    showToast(`Added to ${snapshot.libraryPlaylistName || "library"}`, { ok: true });
+    return snapshot;
+  });
+}
+
+function updateNowHeart(snapshot) {
+  const btn = els.nowHeart;
+  if (!btn) return;
+  const track = snapshot?.nowPlaying?.track;
+  if (!track?.tidalTrackId) {
+    btn.classList.add("hidden");
+    btn.onclick = null;
+    return;
+  }
+  btn.classList.remove("hidden");
+  btn.innerHTML = ICONS.heart;
+  const hearted = libraryTrackSet(snapshot).has(track.tidalTrackId);
+  btn.classList.toggle("filled", hearted);
+  btn.setAttribute("aria-label", hearted ? "In library" : "Add to karaoke library");
+  btn.disabled = false;
+  btn.onclick = async () => {
+    try {
+      await favoriteTrack(track, { alreadyHearted: hearted });
+    } catch (error) {
+      showToast(error.message);
+    }
+  };
+}
+
 function renderSnapshot(snapshot) {
   state.snapshot = snapshot;
   const np = snapshot.nowPlaying || {};
@@ -153,6 +216,7 @@ function renderSnapshot(snapshot) {
   els.nowArtist.textContent = np.track?.artist || "";
   els.nowBy.textContent = np.addedByName ? `Queued by ${np.addedByName}` : "";
   updatePlayPauseButton(!!np.isPlaying);
+  updateNowHeart(snapshot);
 
   const inLibrary = libraryTrackSet(snapshot);
   els.queueList.innerHTML = "";
@@ -337,23 +401,8 @@ function bindQueueItem(li, item, { history, hearted }) {
   const heartBtn = li.querySelector("[data-heart]");
   if (!heartBtn) return;
   heartBtn.addEventListener("click", async () => {
-    if (hearted) {
-      showToast("Already in the karaoke library", { ok: true });
-      return;
-    }
-    if (!state.snapshot?.libraryConfigured) {
-      showToast("Host hasn't set a karaoke library yet");
-      return;
-    }
     try {
-      const snapshot = await withGuest((guest) =>
-        api("/api/library/favorite", {
-          method: "POST",
-          body: JSON.stringify({ guestId: guest.id, track: item.track }),
-        }),
-      );
-      renderSnapshot(snapshot);
-      showToast(`Added to ${snapshot.libraryPlaylistName || "library"}`, { ok: true });
+      await favoriteTrack(item.track, { alreadyHearted: hearted });
     } catch (error) {
       showToast(error.message);
     }
@@ -371,6 +420,7 @@ function escapeHtml(value) {
 function renderSearchResults(tracks, { artistBrowse = null } = {}) {
   state.artistBrowse = artistBrowse;
   els.searchResults.innerHTML = "";
+  const queuedIds = activeQueuedTrackIds(state.snapshot);
 
   if (artistBrowse) {
     const header = document.createElement("div");
@@ -401,12 +451,13 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
     const artistControl = track.artistId && !artistBrowse
       ? `<button type="button" class="artist-link" data-artist>${artistLabel}</button>${albumBit}`
       : `<span>${artistLabel}${albumBit}</span>`;
+    const alreadyQueued = queuedIds.has(track.tidalTrackId);
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(track.title)}</strong>
         ${artistControl}
       </div>
-      <button type="button" data-add>Add</button>
+      <button type="button" data-add ${alreadyQueued ? "disabled" : ""} class="${alreadyQueued ? "added" : ""}">${alreadyQueued ? "Added" : "Add"}</button>
     `;
     const artistBtn = row.querySelector("[data-artist]");
     if (artistBtn) {
@@ -421,20 +472,26 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
         }
       });
     }
-    row.querySelector("[data-add]").addEventListener("click", async () => {
-      try {
-        await withGuest((guest) =>
-          api("/api/queue", {
-            method: "POST",
-            body: JSON.stringify({ guestId: guest.id, track }),
-          }),
-        );
-        closeModal();
-        showToast(`Queued ${track.title}`, { ok: true });
-      } catch (error) {
-        showToast(error.message);
-      }
-    });
+    const addBtn = row.querySelector("[data-add]");
+    if (!alreadyQueued) {
+      addBtn.addEventListener("click", async () => {
+        addBtn.disabled = true;
+        try {
+          await withGuest((guest) =>
+            api("/api/queue", {
+              method: "POST",
+              body: JSON.stringify({ guestId: guest.id, track }),
+            }),
+          );
+          markAddButtonAdded(addBtn);
+          queuedIds.add(track.tidalTrackId);
+          showToast(`Queued ${track.title}`, { ok: true });
+        } catch (error) {
+          addBtn.disabled = false;
+          showToast(error.message);
+        }
+      });
+    }
     els.searchResults.appendChild(row);
   });
 }

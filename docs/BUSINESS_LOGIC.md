@@ -7,6 +7,7 @@
 - The session keeps the **full ordered list** of songs for the party: already sung, now playing, and up next.
 - The first track added while nothing is playing starts immediately.
 - Later adds wait in "Up next".
+- Guests may not add a track that is already now playing or in "Up next" (already-sung history may be re-queued).
 - Skip / next moves the playhead forward; sung songs remain in history.
 - Previous moves the playhead back through history.
 - Reorder moves an upcoming item within "Up next" only (drag handles on phones).

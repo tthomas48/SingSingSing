@@ -25,9 +25,12 @@
 
     <section id="partyPanel" class="panel hidden">
       <div class="nowPlaying">
-        <div>
+        <div class="nowPlaying-meta">
           <p class="eyebrow">Now singing</p>
-          <h2 id="nowTitle">Nothing yet</h2>
+          <div class="nowPlaying-title-row">
+            <h2 id="nowTitle">Nothing yet</h2>
+            <button type="button" id="nowHeart" class="heart-btn hidden" aria-label="Add to karaoke library"></button>
+          </div>
           <p id="nowArtist" class="muted"></p>
           <p id="nowBy" class="muted"></p>
         </div>

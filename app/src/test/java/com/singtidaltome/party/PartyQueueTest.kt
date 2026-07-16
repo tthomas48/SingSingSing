@@ -92,4 +92,17 @@ class PartyQueueTest {
         assertThat(queue.snapshotHistory()).isEmpty()
         assertThat(queue.snapshotQueue().map { it.id }).containsExactly("b", "c").inOrder()
     }
+
+    @Test
+    fun containsActiveTrackIdCoversNowAndUpcomingNotHistory() {
+        val queue = PartyQueue()
+        queue.add(item("a", "t1"))
+        queue.add(item("b", "t2"))
+        queue.advance()
+        assertThat(queue.containsActiveTrackId("t1")).isTrue()
+        assertThat(queue.containsActiveTrackId("t2")).isTrue()
+        queue.skip()
+        assertThat(queue.containsActiveTrackId("t1")).isFalse()
+        assertThat(queue.containsActiveTrackId("t2")).isTrue()
+    }
 }
