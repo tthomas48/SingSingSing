@@ -45,4 +45,6 @@
 
 - On successful track start, the accessibility service attempts to click Tidal's `lyricsButton`.
 - Guests can also tap **Open Lyrics** to request that click on demand.
-- Guest phones can separately load synced lyrics from LRCLIB for the current track.
+- Guest phones can tap **Load synced lyrics** to fetch LRCLIB lyrics for the current track and open them in a modal.
+- When LRCLIB returns LRC-timed lines, the server parses sync codes into `{ timeMs, text }` and the phone bolds the current line from WebSocket `nowPlaying.positionMs` (with client-side interpolation between snapshot updates).
+- If the now-playing track changes while the modal is open, the guest must load lyrics again for the new track.

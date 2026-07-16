@@ -27,11 +27,7 @@ class LrcLibClient(
                     parameter("album_name", track.album)
                     parameter("duration", track.durationSeconds)
                 }.body()
-                return LyricsResponse(
-                    plainLyrics = exact.plainLyrics,
-                    syncedLyrics = exact.syncedLyrics,
-                    instrumental = exact.instrumental,
-                )
+                return toResponse(exact)
             }
             searchFallback(track)
         } catch (_: Exception) {
@@ -46,10 +42,16 @@ class LrcLibClient(
             parameter("artist_name", track.artist.substringBefore(",").trim())
         }.body()
         val best = results.firstOrNull() ?: return LyricsResponse()
+        return toResponse(best)
+    }
+
+    private fun toResponse(track: LrcLibTrack): LyricsResponse {
+        val synced = track.syncedLyrics
         return LyricsResponse(
-            plainLyrics = best.plainLyrics,
-            syncedLyrics = best.syncedLyrics,
-            instrumental = best.instrumental,
+            plainLyrics = track.plainLyrics,
+            syncedLyrics = synced,
+            instrumental = track.instrumental,
+            lines = LrcParser.parse(synced),
         )
     }
 

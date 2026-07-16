@@ -70,10 +70,25 @@
           <h3>Phone lyrics</h3>
           <button type="button" id="loadLyrics" class="secondary">Load synced lyrics</button>
         </div>
-        <pre id="lyricsBox" class="lyricsBox">Optional: fetch LRCLIB lyrics for phones.</pre>
+        <p class="muted tiny">Opens a karaoke-style modal synced to the song playing on the TV.</p>
       </section>
     </section>
   </main>
+
+  <div id="lyricsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="lyricsModalTitle">
+    <div class="modal-backdrop" data-close-lyrics-modal></div>
+    <div class="modal-sheet panel lyrics-modal-sheet">
+      <div class="row between">
+        <div>
+          <p class="eyebrow">Phone lyrics</p>
+          <h2 id="lyricsModalTitle">Lyrics</h2>
+          <p id="lyricsModalArtist" class="muted"></p>
+        </div>
+        <button type="button" class="secondary" data-close-lyrics-modal>Close</button>
+      </div>
+      <div id="lyricsLines" class="lyrics-lines" aria-live="polite"></div>
+    </div>
+  </div>
 
   <div id="addModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
     <div class="modal-backdrop" data-close-modal></div>

@@ -122,8 +122,15 @@ data class PlaylistSummary(
 )
 
 @Serializable
+data class LyricsLine(
+    val timeMs: Long,
+    val text: String,
+)
+
+@Serializable
 data class LyricsResponse(
     val plainLyrics: String? = null,
     val syncedLyrics: String? = null,
     val instrumental: Boolean = false,
+    val lines: List<LyricsLine> = emptyList(),
 )

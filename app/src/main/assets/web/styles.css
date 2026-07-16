@@ -289,15 +289,44 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
 
 .messages li { margin-bottom: 8px; }
 .lyrics { margin-top: 22px; }
-.lyricsBox {
-  white-space: pre-wrap;
-  background: #101b2d;
-  border-radius: 14px;
-  padding: 14px;
-  min-height: 140px;
-  color: var(--muted);
+
+.lyrics-modal-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: min(92vh, 900px);
+}
+.lyrics-lines {
+  margin-top: 16px;
   overflow: auto;
-  max-height: 320px;
+  flex: 1;
+  min-height: 40vh;
+  max-height: min(70vh, 640px);
+  padding: 8px 4px 48px;
+  scroll-behavior: smooth;
+}
+.lyrics-line {
+  margin: 0;
+  padding: 10px 8px;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1.45;
+  transition: color 120ms ease, font-weight 120ms ease;
+}
+.lyrics-line.active {
+  color: var(--text);
+  font-weight: 700;
+}
+.lyrics-plain {
+  white-space: pre-wrap;
+  color: var(--muted);
+  margin: 0;
+  padding: 8px;
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+.lyrics-status {
+  color: var(--muted);
+  margin: 12px 0 0;
 }
 
 .modal {
