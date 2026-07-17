@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Sing Tidal To Me</string>
-    <string name="join_title">Sing Tidal To Me</string>
+    <string name="app_name">Sing Sing Sing</string>
+    <string name="join_title">Sing Sing Sing</string>
     <string name="join_subtitle">Scan to join the party</string>
     <string name="join_waiting">Starting party server…</string>
     <string name="join_url_label">Or open this on your phone:</string>

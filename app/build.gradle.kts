@@ -19,11 +19,11 @@ fun localProp(name: String, default: String = ""): String =
         .replace("\"", "\\\"")
 
 android {
-    namespace = "com.singtidaltome"
+    namespace = "com.singsingsing"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.singtidaltome"
+        applicationId = "com.singsingsing"
         minSdk = 28
         targetSdk = 35
         versionCode = 1

@@ -1,6 +1,6 @@
 # Architecture
 
-Sing Tidal To Me is an all-in-one Android TV app that hosts a Jackbox-style party and drives the official Tidal TV app.
+Sing Sing Sing is an all-in-one Android TV app that hosts a Jackbox-style party and drives the official Tidal TV app.
 
 ## Components
 

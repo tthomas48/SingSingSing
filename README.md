@@ -1,4 +1,4 @@
-# Sing Tidal To Me
+# Sing Sing Sing
 
 Jackbox-style sing-along companion for **Tidal on Google TV**.
 
@@ -40,12 +40,24 @@ From the machine that already has `adb` connected to the TV (your Windows host w
 
 ```powershell
 adb install -r app-debug.apk
-adb shell am start -n com.singtidaltome.debug/com.singtidaltome.ui.JoinActivity
+adb shell am start -n com.singsingsing.debug/com.singsingsing.ui.JoinActivity
 ```
+
+### Migrating from Sing Tidal To Me
+
+The package id changed (`com.singtidaltome` → `com.singsingsing`), so this is a new app on the TV. Uninstall the old one first (debug and/or release), then install:
+
+```powershell
+adb uninstall com.singtidaltome.debug
+adb uninstall com.singtidaltome
+adb install -r app-debug.apk
+```
+
+You will need to re-grant notification access / accessibility, sign in to Tidal again, and re-pick the karaoke library playlist.
 
 ## First-run setup on the TV
 
-1. Open **Sing Tidal To Me**.
+1. Open **Sing Sing Sing**.
 2. Grant **notification access** (required to control Tidal's media session).
 3. Optionally enable the **Open Tidal lyrics** accessibility service.
 4. Start Tidal and play anything once so a media session exists.

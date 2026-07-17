@@ -8,4 +8,4 @@
     android:description="@string/lyrics_accessibility_label"
     android:notificationTimeout="100"
     android:packageNames="com.aspiro.tidal"
-    android:settingsActivity="com.singtidaltome.ui.JoinActivity" />
+    android:settingsActivity="com.singsingsing.ui.JoinActivity" />
