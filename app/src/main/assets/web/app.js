@@ -6,6 +6,8 @@ const state = {
   seenMessageIds: null,
   lastSearchQuery: "",
   lastSearchTracks: [],
+  libraryCache: null,
+  addBusyCount: 0,
   artistBrowse: null,
   lyrics: {
     open: false,
@@ -35,6 +37,7 @@ const els = {
   searchForm: document.getElementById("searchForm"),
   searchInput: document.getElementById("searchInput"),
   searchResults: document.getElementById("searchResults"),
+  addBusyBar: document.getElementById("addBusyBar"),
   queueList: document.getElementById("queueList"),
   queueViewport: document.getElementById("queueViewport"),
   queuePane: document.getElementById("queuePane"),
@@ -144,7 +147,11 @@ function openModal() {
   els.addModal.classList.remove("hidden");
   setAddTab(state.snapshot?.libraryConfigured ? "library" : "tidal");
   if (state.addTab === "library") {
-    loadLibrary();
+    const cached = state.libraryCache;
+    if (cached?.configured && Array.isArray(cached.tracks) && !els.libraryInput.value.trim()) {
+      renderSearchResults(cached.tracks);
+    }
+    loadLibrary(els.libraryInput.value);
     els.libraryInput.focus();
   } else {
     els.searchInput.focus();
@@ -153,6 +160,11 @@ function openModal() {
 
 function closeModal() {
   els.addModal.classList.add("hidden");
+  state.addBusyCount = 0;
+  if (els.addBusyBar) {
+    els.addBusyBar.classList.add("hidden");
+    els.addBusyBar.setAttribute("aria-hidden", "true");
+  }
 }
 
 function stopLyricsClock() {
@@ -296,6 +308,39 @@ function showLyricsLoading() {
   return state.lyrics.loadId;
 }
 
+function setAddBusy(busy) {
+  if (busy) {
+    state.addBusyCount += 1;
+  } else {
+    state.addBusyCount = Math.max(0, state.addBusyCount - 1);
+  }
+  const active = state.addBusyCount > 0;
+  if (!els.addBusyBar) return;
+  els.addBusyBar.classList.toggle("hidden", !active);
+  els.addBusyBar.setAttribute("aria-hidden", active ? "false" : "true");
+}
+
+function showSearchLoading(message = "Loading…") {
+  els.searchResults.innerHTML = `
+    <div class="search-loading" role="status" aria-live="polite">
+      <div class="search-spinner" aria-hidden="true"></div>
+      <p class="lyrics-status">${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function submitOnEnter(input, form) {
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    }
+  });
+}
+
 function openLyricsModal(lyrics) {
   const track = state.snapshot?.nowPlaying?.track || null;
   state.lyrics.open = true;
@@ -366,6 +411,8 @@ function markAddButtonAdded(button) {
   button.textContent = "Added";
   button.disabled = true;
   button.classList.add("added");
+  button.classList.remove("busy");
+  button.removeAttribute("aria-busy");
 }
 
 function favoriteTrack(track, { alreadyHearted = false } = {}) {
@@ -676,6 +723,8 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
     const artistBtn = row.querySelector("[data-artist]");
     if (artistBtn) {
       artistBtn.addEventListener("click", async () => {
+        showSearchLoading(`Loading tracks by ${track.artist || "artist"}…`);
+        setAddBusy(true);
         try {
           const payload = await api(`/api/artists/${encodeURIComponent(track.artistId)}/tracks`);
           renderSearchResults(payload.tracks || [], {
@@ -683,6 +732,9 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
           });
         } catch (error) {
           showToast(error.message);
+          renderSearchResults(tracks, { artistBrowse });
+        } finally {
+          setAddBusy(false);
         }
       });
     }
@@ -690,6 +742,9 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
     if (!alreadyQueued) {
       addBtn.addEventListener("click", async () => {
         addBtn.disabled = true;
+        addBtn.classList.add("busy");
+        addBtn.setAttribute("aria-busy", "true");
+        setAddBusy(true);
         try {
           await withGuest((guest) =>
             api("/api/queue", {
@@ -702,7 +757,11 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
           showToast(`Queued ${track.title}`, { ok: true });
         } catch (error) {
           addBtn.disabled = false;
+          addBtn.classList.remove("busy");
+          addBtn.removeAttribute("aria-busy");
           showToast(error.message);
+        } finally {
+          setAddBusy(false);
         }
       });
     }
@@ -711,9 +770,15 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
 }
 
 async function loadLibrary(query = "") {
-  console.log("[library] load", { query });
+  const cleaned = String(query || "").trim();
+  console.log("[library] load", { query: cleaned });
+  const canUseGuestCache = !cleaned && state.libraryCache?.configured && Array.isArray(state.libraryCache.tracks);
+  if (!canUseGuestCache) {
+    showSearchLoading(cleaned ? "Filtering library…" : "Loading karaoke library…");
+  }
+  setAddBusy(true);
   try {
-    const path = query ? `/api/library?q=${encodeURIComponent(query)}` : "/api/library";
+    const path = cleaned ? `/api/library?q=${encodeURIComponent(cleaned)}` : "/api/library";
     const payload = await api(path);
     console.log("[library] result", {
       configured: payload.configured,
@@ -721,13 +786,26 @@ async function loadLibrary(query = "") {
       count: (payload.tracks || []).length,
     });
     if (!payload.configured) {
+      state.libraryCache = null;
       els.searchResults.innerHTML = `<div class="result"><span>No karaoke library configured on the TV yet.</span></div>`;
       return;
+    }
+    if (!cleaned) {
+      state.libraryCache = {
+        configured: true,
+        playlistName: payload.playlistName || null,
+        tracks: payload.tracks || [],
+      };
     }
     renderSearchResults(payload.tracks || []);
   } catch (error) {
     console.error("[library] failed", error);
     showToast(error.message);
+    if (!canUseGuestCache) {
+      els.searchResults.innerHTML = `<div class="result"><span>Could not load library.</span></div>`;
+    }
+  } finally {
+    setAddBusy(false);
   }
 }
 
@@ -755,7 +833,13 @@ document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     const tab = btn.getAttribute("data-tab");
     setAddTab(tab);
-    if (tab === "library") loadLibrary(els.libraryInput.value);
+    if (tab === "library") {
+      const query = els.libraryInput.value;
+      if (!query.trim() && state.libraryCache?.configured && Array.isArray(state.libraryCache.tracks)) {
+        renderSearchResults(state.libraryCache.tracks);
+      }
+      loadLibrary(query);
+    }
   });
 });
 
@@ -792,6 +876,8 @@ els.searchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = els.searchInput.value;
   console.log("[search] submit", { query });
+  showSearchLoading("Searching Tidal…");
+  setAddBusy(true);
   try {
     const payload = await api("/api/search", {
       method: "POST",
@@ -810,8 +896,14 @@ els.searchForm.addEventListener("submit", async (event) => {
   } catch (error) {
     console.error("[search] failed", error);
     showToast(error.message);
+    els.searchResults.innerHTML = `<div class="result"><span>Search failed.</span></div>`;
+  } finally {
+    setAddBusy(false);
   }
 });
+
+submitOnEnter(els.libraryInput, els.libraryForm);
+submitOnEnter(els.searchInput, els.searchForm);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", async () => {

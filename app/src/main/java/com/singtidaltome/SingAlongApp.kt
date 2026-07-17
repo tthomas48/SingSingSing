@@ -4,6 +4,7 @@ import android.app.Application
 import com.singtidaltome.lyrics.LrcLibClient
 import com.singtidaltome.party.PartyQueueStore
 import com.singtidaltome.party.PartySession
+import com.singtidaltome.tidal.LibraryTrackCacheStore
 import com.singtidaltome.tidal.TidalAuthClient
 import com.singtidaltome.tidal.TidalCatalogClient
 import com.singtidaltome.tidal.TidalTokenStore
@@ -41,6 +42,7 @@ class SingAlongApp : Application() {
         tidalCatalog = TidalCatalogClient(
             authClient = tidalAuth,
             countryCode = BuildConfig.TIDAL_COUNTRY_CODE,
+            libraryTrackCache = LibraryTrackCacheStore(this),
         )
         lrcLibClient = LrcLibClient()
         partySession = PartySession(

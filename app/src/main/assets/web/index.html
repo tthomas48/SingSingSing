@@ -93,32 +93,35 @@
     </div>
   </div>
 
-  <div id="addModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
+  <div id="addModal" class="modal add-modal hidden" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
     <div class="modal-backdrop" data-close-modal></div>
-    <div class="modal-sheet panel">
-      <div class="row between">
-        <h2 id="addModalTitle">Add a song</h2>
-        <button type="button" class="secondary" data-close-modal>Close</button>
-      </div>
-      <div class="tabs" role="tablist">
-        <button type="button" class="tab active" data-tab="library" role="tab" aria-selected="true">Library</button>
-        <button type="button" class="tab" data-tab="tidal" role="tab" aria-selected="false">Search all Tidal</button>
-      </div>
-      <form id="libraryForm" class="search">
-        <label for="libraryInput">Browse karaoke library</label>
-        <div class="row">
-          <input id="libraryInput" placeholder="Filter library songs" />
-          <button type="submit">Filter</button>
+    <div class="modal-sheet panel add-modal-sheet">
+      <div class="add-modal-chrome">
+        <div class="row between">
+          <h2 id="addModalTitle">Add a song</h2>
+          <button type="button" class="secondary" data-close-modal>Close</button>
         </div>
-        <p id="libraryHint" class="muted tiny"></p>
-      </form>
-      <form id="searchForm" class="search hidden">
-        <label for="searchInput">Search Tidal</label>
-        <div class="row">
-          <input id="searchInput" placeholder="Song or artist" />
-          <button type="submit">Search</button>
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab active" data-tab="library" role="tab" aria-selected="true">Library</button>
+          <button type="button" class="tab" data-tab="tidal" role="tab" aria-selected="false">Search all Tidal</button>
         </div>
-      </form>
+        <form id="libraryForm" class="search">
+          <label for="libraryInput">Browse karaoke library</label>
+          <div class="row">
+            <input id="libraryInput" type="search" enterkeyhint="search" placeholder="Filter library songs" />
+            <button type="submit">Filter</button>
+          </div>
+          <p id="libraryHint" class="muted tiny"></p>
+        </form>
+        <form id="searchForm" class="search hidden">
+          <label for="searchInput">Search Tidal</label>
+          <div class="row">
+            <input id="searchInput" type="search" enterkeyhint="search" placeholder="Song or artist" />
+            <button type="submit">Search</button>
+          </div>
+        </form>
+        <div id="addBusyBar" class="add-busy-bar hidden" role="progressbar" aria-hidden="true" aria-label="Working"></div>
+      </div>
       <div id="searchResults" class="results"></div>
     </div>
   </div>

@@ -29,6 +29,7 @@ class TidalCatalogClient(
     private val authClient: TidalAuthClient,
     private val countryCode: String,
     private val http: HttpClient = defaultHttpClient(),
+    private val libraryTrackCache: LibraryTrackCachePersistence? = null,
 ) {
     @Volatile
     private var libraryCache: LibraryCache? = null
@@ -43,6 +44,7 @@ class TidalCatalogClient(
 
     fun invalidateLibraryCache() {
         libraryCache = null
+        libraryTrackCache?.clear()
     }
 
     suspend fun searchTracks(query: String, limit: Int = 20): List<TrackRef> {
@@ -231,13 +233,30 @@ class TidalCatalogClient(
         if (!forceRefresh && cached != null && cached.playlistId == playlistId) {
             return cached.tracks
         }
+        if (!forceRefresh) {
+            val diskTracks = libraryTrackCache?.load(playlistId)
+            if (diskTracks != null) {
+                libraryCache = LibraryCache(
+                    playlistId = playlistId,
+                    tracks = diskTracks,
+                    trackIds = diskTracks.map { it.tidalTrackId }.toSet(),
+                )
+                Log.i(TidalApiLog.TAG, "Restored library cache from disk playlistId=$playlistId count=${diskTracks.size}")
+                return diskTracks
+            }
+        }
         val tracks = getPlaylistTracks(playlistId)
+        rememberLibraryTracks(playlistId, tracks)
+        return tracks
+    }
+
+    private fun rememberLibraryTracks(playlistId: String, tracks: List<TrackRef>) {
         libraryCache = LibraryCache(
             playlistId = playlistId,
             tracks = tracks,
             trackIds = tracks.map { it.tidalTrackId }.toSet(),
         )
-        return tracks
+        libraryTrackCache?.save(playlistId, tracks)
     }
 
     suspend fun searchLibrary(query: String): List<TrackRef> {

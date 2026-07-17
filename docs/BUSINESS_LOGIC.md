@@ -45,9 +45,9 @@
 - A full uninstall or clearing app data removes both the Tidal login and the persisted party queue.
 - Redirect URI must be registered in the Tidal developer portal and match `http://<tv-lan-ip>:<port>/oauth/callback`.
 - After sign-in, the host picks one of their playlists as the karaoke library.
-- Guests browse/filter that playlist from the Add Song modal first; "Search all Tidal" is the fallback for songs not in the library.
+- Guests open a full-screen Add Song modal that auto-loads the full karaoke library browse list (filter is optional; Enter submits the filter). "Search all Tidal" is the fallback for songs not in the library.
 - A heart on each queued track appends that track to the configured library playlist (`playlists.write`) and updates the shared "in library" set for everyone.
-- Library track IDs are cached in memory after load / heart / playlist change.
+- Library tracks are cached in TV memory and on disk after load / heart / playlist change, so cold starts and repeat opens skip re-paginating Tidal. Guests also keep a session cache of the last full library response for instant modal reopen.
 
 ## Lyrics
 
