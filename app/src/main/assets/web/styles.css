@@ -320,7 +320,7 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
 .chatter-compose {
   display: flex;
   gap: 8px;
-  margin-top: 10px;
+  margin-bottom: 10px;
 }
 .chatter-compose input { flex: 1; }
 .chatter-compose input:disabled { opacity: 0.5; }

@@ -25,7 +25,7 @@
 - Every queue add produces a party message: "`{name} added {title} by {artist}`".
 - Join / skip / previous / reorder / jump / heart also emit short fun messages for the chatter feed.
 - Guests can post their own chatter from a compose box; user messages use the same narrative attribution: "`{name} says {text}`" (trimmed, capped at 120 chars, blank rejected).
-- The guest UI splits Session queue and Party chatter into tabs; the chatter tab uses a fixed-height viewport (~5–8 lines) like the queue, with the compose box below it.
+- The guest UI splits Queue and Chatter into tabs; the chatter tab uses a fixed-height viewport (~5–8 lines) like the queue, with the compose box above it.
 - New chatter messages surface as toasts everywhere so guests don't need the chatter tab open: a toast on every guest phone (deduped by message id, backlog not re-toasted on connect) and an Android `Toast` on the TV.
 - New guest joins produce a high-priority Android TV notification so arrivals are visible while Tidal has focus.
 - Messages are capped (newest kept) so the feed stays readable on phones.

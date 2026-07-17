@@ -57,8 +57,8 @@
 
       <div class="feed">
         <div class="feed-tabs" role="tablist">
-          <button type="button" class="feed-tab active" data-feed-tab="queue" role="tab" aria-selected="true">Session queue</button>
-          <button type="button" class="feed-tab" data-feed-tab="chatter" role="tab" aria-selected="false">Party chatter</button>
+          <button type="button" class="feed-tab active" data-feed-tab="queue" role="tab" aria-selected="true">Queue</button>
+          <button type="button" class="feed-tab" data-feed-tab="chatter" role="tab" aria-selected="false">Chatter</button>
         </div>
         <section id="queuePane" class="feed-pane" role="tabpanel">
           <div id="queueViewport" class="queue-viewport">
@@ -66,13 +66,13 @@
           </div>
         </section>
         <section id="chatterPane" class="feed-pane hidden" role="tabpanel">
-          <div id="chatterViewport" class="chatter-viewport">
-            <ul id="messageList" class="list messages"></ul>
-          </div>
           <form id="chatterForm" class="chatter-compose">
             <input id="chatterInput" maxlength="120" autocomplete="off" placeholder="Say something to the party" />
             <button type="submit">Send</button>
           </form>
+          <div id="chatterViewport" class="chatter-viewport">
+            <ul id="messageList" class="list messages"></ul>
+          </div>
         </section>
       </div>
     </section>
