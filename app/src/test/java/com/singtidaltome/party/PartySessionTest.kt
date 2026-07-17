@@ -268,6 +268,32 @@ class PartySessionTest {
     }
 
     @Test
+    fun foreignTrackWithEmptyUpNextPausesWithoutAdvancing() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A", durationSeconds = 200))
+
+        party.onTidalMetadata("1", "One", "A", positionMs = 1_000, playing = true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "cutthroat",
+            title = "Cutthroat",
+            artist = "Shame",
+            positionMs = 0,
+            playing = true,
+        )
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1")
+        assertThat(bridge.pauseCount).isAtLeast(1)
+        assertThat(bridge.skipToNextCount).isEqualTo(0)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("1")
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isFalse()
+        assertThat(party.snapshot.value.queue).isEmpty()
+    }
+
+    @Test
     fun rejectsDuplicateActiveTrackButAllowsAfterHistory() = runTest {
         val (party, _) = session()
         val guest = party.join("Ada")

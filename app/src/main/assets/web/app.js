@@ -8,6 +8,7 @@ const state = {
   lastSearchTracks: [],
   libraryCache: null,
   addBusyCount: 0,
+  queueScrollReady: false,
   artistBrowse: null,
   lyrics: {
     open: false,
@@ -505,8 +506,10 @@ function toastNewMessages(messages) {
 }
 
 function renderSnapshot(snapshot) {
+  const prevTrackId = state.snapshot?.nowPlaying?.track?.tidalTrackId || null;
   state.snapshot = snapshot;
   const np = snapshot.nowPlaying || {};
+  const nextTrackId = np.track?.tidalTrackId || null;
   els.nowTitle.textContent = np.track?.title || "Nothing yet";
   els.nowArtist.textContent = np.track?.artist || "";
   els.nowBy.textContent = np.addedByName ? `Queued by ${np.addedByName}` : "";
@@ -514,6 +517,8 @@ function renderSnapshot(snapshot) {
   updateNowActions(snapshot);
 
   const inLibrary = libraryTrackSet(snapshot);
+  const viewport = els.queueViewport;
+  const savedScrollTop = viewport ? viewport.scrollTop : 0;
   els.queueList.innerHTML = "";
   const history = snapshot.history || [];
   const upcoming = snapshot.queue || [];
@@ -540,8 +545,14 @@ function renderSnapshot(snapshot) {
     els.queueList.innerHTML = `<li class="muted">Queue is empty — tap Add a song.</li>`;
   }
 
-  scrollQueueToUpcoming();
-
+  // Position ticks arrive ~1/s over the websocket; only jump the queue when the song changes
+  // (or on the first paint / when switching back to the queue tab).
+  if (!state.queueScrollReady || prevTrackId !== nextTrackId) {
+    scrollQueueToUpcoming();
+    state.queueScrollReady = true;
+  } else if (viewport) {
+    viewport.scrollTop = savedScrollTop;
+  }
 
   const messages = snapshot.messages || [];
   toastNewMessages(messages);
@@ -568,20 +579,18 @@ function renderSnapshot(snapshot) {
 function scrollQueueToUpcoming() {
   const viewport = els.queueViewport;
   if (!viewport) return;
+  // Pin the next (first upcoming) track to the top of the viewport.
+  // Prefer the upcoming row over the sticky "Up next" divider so the song itself is flush top.
   const anchor =
-    els.queueList.querySelector(".queue-divider") ||
-    els.queueList.querySelector(".queue-item:not(.history)");
-  if (anchor) {
-    viewport.scrollTop = anchor.offsetTop;
+    els.queueList.querySelector(".queue-item:not(.history)") ||
+    els.queueList.querySelector(".queue-divider");
+  if (!anchor) {
+    viewport.scrollTop = 0;
     return;
   }
-  const historyItems = els.queueList.querySelectorAll(".queue-item.history");
-  if (historyItems.length) {
-    const last = historyItems[historyItems.length - 1];
-    viewport.scrollTop = Math.max(0, last.offsetTop - viewport.clientHeight / 2);
-  } else {
-    viewport.scrollTop = 0;
-  }
+  const viewportRect = viewport.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  viewport.scrollTop += anchorRect.top - viewportRect.top;
 }
 
 function buildQueueItem(item, { history, index = 0, count = 0, inLibrary }) {

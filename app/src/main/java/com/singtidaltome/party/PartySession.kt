@@ -255,13 +255,17 @@ class PartySession(
             }
 
             if (trackId != null && !ownsTrack && trackId !in historyTrackIds) {
-                // Tidal advanced on its own; reclaim with our next track if we have one.
+                // Tidal advanced on its own (play-next / radio / autoplay).
                 if (lastObservedTidalTrackId != null && trackId != lastObservedTidalTrackId) {
+                    bridge?.pause()
+                    isPlaying = false
                     if (queue.snapshotQueue().isNotEmpty()) {
-                        bridge?.pause()
                         startNextLocked(skipCurrent = true)
                         return@withLock
                     }
+                    lastObservedTidalTrackId = trackId
+                    publishLocked()
+                    return@withLock
                 }
             }
         }

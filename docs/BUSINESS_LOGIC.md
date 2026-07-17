@@ -16,8 +16,8 @@
 - While launching a party track, brief foreign MediaSession metadata is ignored.
 - Stale MediaSession events whose track ID is already in history (already sung) are ignored so they cannot overwrite position or trigger a second skip.
 - Near-end advance only runs when the MediaSession track ID matches the party now-playing track.
-- If Tidal still switches to a different track ID afterward (not one we already finished), we pause and reclaim with our next queued track when one exists (we do not call Tidal's skip-to-next / radio).
-- Guest UI shows history + up next in a fixed-height viewport with the next track pinned at the top; scroll up for already-sung (dimmed) songs.
+- If Tidal still switches to a different track ID afterward (not one we already finished), we pause. When something is Up next we reclaim with that party track; when Up next is empty we stay paused so Tidal play-next/radio cannot keep playing (we do not call Tidal's skip-to-next / radio).
+- Guest UI shows history + up next in a fixed-height viewport with the next track pinned at the top; scroll up for already-sung (dimmed) songs. Auto-scroll to that next track only when the now-playing song changes (not on position ticks).
 - The full session queue (history, current item, and upcoming items) is persisted on the TV and restored after process death or an `adb install -r` deployment. Restore never auto-starts playback.
 
 ## Attribution
