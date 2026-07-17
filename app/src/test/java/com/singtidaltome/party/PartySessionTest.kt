@@ -32,8 +32,26 @@ class PartySessionTest {
         override fun readQueue(): List<BridgeQueueItem> = emptyList()
     }
 
+    private class FakeQueuePersistence(
+        private var persisted: PersistedPartyQueue? = null,
+    ) : PartyQueuePersistence {
+        val saves = mutableListOf<PersistedPartyQueue>()
+
+        override fun load(): PersistedPartyQueue? = persisted
+
+        override fun save(queue: PersistedPartyQueue) {
+            persisted = queue
+            saves += queue
+        }
+
+        override fun clear() {
+            persisted = null
+        }
+    }
+
     private fun session(
         bridge: FakeBridge = FakeBridge(),
+        queuePersistence: PartyQueuePersistence? = null,
         nowMs: () -> Long = { System.currentTimeMillis() },
     ): Pair<PartySession, FakeBridge> {
         val auth = TidalAuthClient(clientId = "", clientSecret = "")
@@ -41,6 +59,7 @@ class PartySessionTest {
         val party = PartySession(
             tidalCatalog = catalog,
             lrcLibClient = LrcLibClient(),
+            queuePersistence = queuePersistence,
             nowMs = nowMs,
         )
         party.attachBridge(bridge)
@@ -266,5 +285,49 @@ class PartySessionTest {
         assertThat(party.snapshot.value.history.map { it.track.tidalTrackId }).containsExactly("1")
         party.addTrack(guest.id, TrackRef("1", "One again", "A"))
         assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId }).containsExactly("1")
+    }
+
+    @Test
+    fun restoresAndPersistsQueueWithoutAutoPlaying() = runTest {
+        fun item(id: String) = QueueItem(
+            id = id,
+            track = TrackRef(id, "Song $id", "Artist"),
+            addedByGuestId = "old-guest",
+            addedByName = "Earlier guest",
+        )
+        val persistence = FakeQueuePersistence(
+            PersistedPartyQueue(
+                items = listOf(item("1"), item("2"), item("3")),
+                currentIndex = 1,
+            ),
+        )
+
+        val (party, bridge) = session(queuePersistence = persistence)
+
+        assertThat(bridge.played).isEmpty()
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isFalse()
+        assertThat(party.snapshot.value.history.map { it.id }).containsExactly("1")
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+        assertThat(party.snapshot.value.queue.map { it.id }).containsExactly("3")
+
+        val guest = party.join("New guest")
+        assertThat(persistence.saves.last().currentIndex).isEqualTo(1)
+        assertThat(persistence.saves.last().items.map { it.id })
+            .containsExactly("1", "2", "3").inOrder()
+
+        party.onTidalMetadata(
+            trackId = "foreign-track",
+            title = "Something Tidal was already playing",
+            artist = "Another artist",
+            positionMs = 42_000,
+            playing = true,
+        )
+        assertThat(bridge.played).isEmpty()
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isFalse()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+
+        party.play(guest.id)
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("2")
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isTrue()
     }
 }

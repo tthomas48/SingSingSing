@@ -1,7 +1,7 @@
 package com.singtidaltome.party
 
 /**
- * In-memory sing-along queue owned by our app (not Tidal's queue).
+ * Sing-along queue owned by our app (not Tidal's queue).
  *
  * Keeps the full session order:
  * `[history..., nowPlaying, upcoming...]` addressed by [currentIndex].
@@ -23,6 +23,19 @@ class PartyQueue {
 
     fun nowPlaying(): QueueItem? =
         currentIndex.takeIf { it in items.indices }?.let { items[it] }
+
+    fun snapshotForPersistence(): PersistedPartyQueue =
+        PersistedPartyQueue(items = items.toList(), currentIndex = currentIndex)
+
+    fun restore(persisted: PersistedPartyQueue) {
+        items.clear()
+        items.addAll(persisted.items)
+        currentIndex = when {
+            items.isEmpty() -> -1
+            persisted.currentIndex < 0 -> -1
+            else -> persisted.currentIndex.coerceAtMost(items.lastIndex)
+        }
+    }
 
     /** True if track is now playing or still upcoming (history does not count). */
     fun containsActiveTrackId(tidalTrackId: String): Boolean {

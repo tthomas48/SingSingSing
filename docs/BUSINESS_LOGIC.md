@@ -18,6 +18,7 @@
 - Near-end advance only runs when the MediaSession track ID matches the party now-playing track.
 - If Tidal still switches to a different track ID afterward (not one we already finished), we pause and reclaim with our next queued track when one exists (we do not call Tidal's skip-to-next / radio).
 - Guest UI shows history + up next in a fixed-height viewport with the next track pinned at the top; scroll up for already-sung (dimmed) songs.
+- The full session queue (history, current item, and upcoming items) is persisted on the TV and restored after process death or an `adb install -r` deployment. Restore never auto-starts playback.
 
 ## Attribution
 
@@ -40,6 +41,8 @@
 ## Karaoke library
 
 - The host signs into Tidal on the TV via Authorization Code + PKCE (phone opens the login URL / QR; callback hits the TV party server). Device-code login is not available to third-party developer apps.
+- The access token, refresh token, expiry, user id, and selected library playlist are persisted on the TV. Expired access tokens are refreshed automatically, and an `adb install -r` deployment preserves this data.
+- A full uninstall or clearing app data removes both the Tidal login and the persisted party queue.
 - Redirect URI must be registered in the Tidal developer portal and match `http://<tv-lan-ip>:<port>/oauth/callback`.
 - After sign-in, the host picks one of their playlists as the karaoke library.
 - Guests browse/filter that playlist from the Add Song modal first; "Search all Tidal" is the fallback for songs not in the library.

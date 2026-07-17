@@ -105,4 +105,36 @@ class PartyQueueTest {
         assertThat(queue.containsActiveTrackId("t1")).isFalse()
         assertThat(queue.containsActiveTrackId("t2")).isTrue()
     }
+
+    @Test
+    fun restoreRebuildsHistoryNowPlayingAndUpcoming() {
+        val queue = PartyQueue()
+        queue.restore(
+            PersistedPartyQueue(
+                items = listOf(item("a"), item("b"), item("c")),
+                currentIndex = 1,
+            ),
+        )
+
+        assertThat(queue.snapshotHistory().map { it.id }).containsExactly("a")
+        assertThat(queue.nowPlaying()?.id).isEqualTo("b")
+        assertThat(queue.snapshotQueue().map { it.id }).containsExactly("c")
+        assertThat(queue.snapshotForPersistence().currentIndex).isEqualTo(1)
+    }
+
+    @Test
+    fun restoreClampsInvalidIndexes() {
+        val queue = PartyQueue()
+        queue.restore(
+            PersistedPartyQueue(
+                items = listOf(item("a"), item("b")),
+                currentIndex = 99,
+            ),
+        )
+        assertThat(queue.nowPlaying()?.id).isEqualTo("b")
+
+        queue.restore(PersistedPartyQueue(items = emptyList(), currentIndex = 5))
+        assertThat(queue.nowPlaying()).isNull()
+        assertThat(queue.snapshotForPersistence().currentIndex).isEqualTo(-1)
+    }
 }

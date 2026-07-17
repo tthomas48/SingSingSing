@@ -2,6 +2,7 @@ package com.singtidaltome
 
 import android.app.Application
 import com.singtidaltome.lyrics.LrcLibClient
+import com.singtidaltome.party.PartyQueueStore
 import com.singtidaltome.party.PartySession
 import com.singtidaltome.tidal.TidalAuthClient
 import com.singtidaltome.tidal.TidalCatalogClient
@@ -45,6 +46,7 @@ class SingAlongApp : Application() {
         partySession = PartySession(
             tidalCatalog = tidalCatalog,
             lrcLibClient = lrcLibClient,
+            queuePersistence = PartyQueueStore(this),
         )
     }
 

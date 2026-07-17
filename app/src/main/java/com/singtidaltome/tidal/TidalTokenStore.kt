@@ -6,9 +6,12 @@ import android.content.SharedPreferences
 /**
  * Persists Tidal user OAuth tokens and the selected karaoke library playlist.
  */
-class TidalTokenStore(context: Context) {
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+class TidalTokenStore internal constructor(
+    private val prefs: SharedPreferences,
+) {
+    constructor(context: Context) : this(
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
+    )
 
     fun hasUserSession(): Boolean = !refreshToken().isNullOrBlank() || !accessToken().isNullOrBlank()
 

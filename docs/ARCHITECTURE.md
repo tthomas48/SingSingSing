@@ -7,7 +7,7 @@ Sing Tidal To Me is an all-in-one Android TV app that hosts a Jackbox-style part
 - **JoinActivity** — TV-facing screen with QR code / LAN URL, Open Tidal, and a Settings menu (notification access, accessibility, party notifications, Tidal device login, karaoke library playlist picker).
 - **PartyForegroundService** — keeps the embedded HTTP/WebSocket server and media bridge alive; notifies on new guests.
 - **PartyServer (Ktor CIO)** — serves the guest web UI and JSON APIs on the LAN.
-- **PartySession / PartyQueue** — party state: guests, attribution messages, reorder/jump, and the sing-along queue we own.
+- **PartySession / PartyQueue / PartyQueueStore** — party state and the sing-along queue we own; the full queue/playhead is persisted in `SharedPreferences` and restored without auto-play.
 - **TidalAuthClient / TidalTokenStore / TidalCatalogClient** — client-credentials for catalog search; Authorization Code + PKCE user OAuth (persisted refresh token) for playlist library read/write against `openapi.tidal.com`. Device-code login is unavailable to third-party Tidal apps.
 - **TidalMediaControllerBridge** — obtains Tidal's `MediaController` via notification-listener access and issues play/pause/skip/`playFromUri`/`playFromSearch`/`skipToQueueItem`.
 - **LyricsAccessibilityService** — best-effort click of Tidal's `lyricsButton` (auto on track start + guest **Open Lyrics**).
@@ -21,6 +21,8 @@ Sing Tidal To Me is an all-in-one Android TV app that hosts a Jackbox-style part
 4. Transport controls, reorder, jump-to-track, and auto-advance keep our queue authoritative.
 5. Hearting a queued track appends it to the library playlist via the user token.
 6. Live state is pushed to phones over WebSocket.
+
+The persisted party queue and Tidal OAuth refresh token survive process death and app upgrades (`adb install -r`). A full uninstall or clear-data removes both.
 
 ## Permissions
 

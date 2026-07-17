@@ -18,6 +18,7 @@ class PartySession(
     private val tidalCatalog: TidalCatalogClient,
     private val lrcLibClient: LrcLibClient,
     private val queue: PartyQueue = PartyQueue(),
+    private val queuePersistence: PartyQueuePersistence? = null,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
 ) {
     private val mutex = Mutex()
@@ -34,6 +35,14 @@ class PartySession(
     private var playLaunchUntilEpochMs: Long = 0
     /** Prevent double near-end advances for the same now-playing item. */
     private var nearEndAdvanceArmed: Boolean = true
+    /** Restored queues remain inert until a guest explicitly resumes party playback. */
+    private var restoredQueueDormant: Boolean = false
+
+    init {
+        queuePersistence?.load()?.let(queue::restore)
+        lastObservedTidalTrackId = queue.nowPlaying()?.track?.tidalTrackId
+        restoredQueueDormant = queue.nowPlaying() != null
+    }
 
     private val _snapshot = MutableStateFlow(buildSnapshotLocked())
     val snapshot: StateFlow<PartySnapshot> = _snapshot.asStateFlow()
@@ -187,8 +196,13 @@ class PartySession(
 
     suspend fun play(guestId: String) = mutex.withLock {
         requireGuestLocked(guestId)
-        bridge?.play()
-        isPlaying = true
+        val restoredCurrent = queue.nowPlaying().takeIf { restoredQueueDormant }
+        if (restoredCurrent != null) {
+            playItemLocked(restoredCurrent)
+        } else {
+            bridge?.play()
+            isPlaying = true
+        }
         publishLocked()
     }
 
@@ -210,6 +224,12 @@ class PartySession(
         positionMs: Long,
         playing: Boolean,
     ) = mutex.withLock {
+        if (restoredQueueDormant) {
+            this.positionMs = 0
+            isPlaying = false
+            publishLocked()
+            return@withLock
+        }
         val our = queue.nowPlaying()
         val launching = nowMs() < playLaunchUntilEpochMs
         val ownsTrack = trackId != null && trackId == our?.track?.tidalTrackId
@@ -312,6 +332,7 @@ class PartySession(
             addMessageLocked("Waiting for Tidal bridge before playing ${item.track.title}")
             return
         }
+        restoredQueueDormant = false
         playLaunchUntilEpochMs = nowMs() + PLAY_LAUNCH_GRACE_MS
         nearEndAdvanceArmed = true
         val played = bridge.playTrack(item.track)
@@ -363,6 +384,7 @@ class PartySession(
 
     private fun publishLocked() {
         val snap = buildSnapshotLocked()
+        queuePersistence?.save(queue.snapshotForPersistence())
         _snapshot.value = snap
         _events.tryEmit(snap)
     }
