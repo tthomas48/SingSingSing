@@ -2,6 +2,8 @@ const state = {
   guest: JSON.parse(localStorage.getItem("singGuest") || "null"),
   snapshot: null,
   addTab: "library",
+  feedTab: "queue",
+  seenMessageIds: null,
   lastSearchQuery: "",
   lastSearchTracks: [],
   artistBrowse: null,
@@ -35,6 +37,10 @@ const els = {
   searchResults: document.getElementById("searchResults"),
   queueList: document.getElementById("queueList"),
   queueViewport: document.getElementById("queueViewport"),
+  queuePane: document.getElementById("queuePane"),
+  chatterPane: document.getElementById("chatterPane"),
+  chatterForm: document.getElementById("chatterForm"),
+  chatterInput: document.getElementById("chatterInput"),
   messageList: document.getElementById("messageList"),
   nowTitle: document.getElementById("nowTitle"),
   nowArtist: document.getElementById("nowArtist"),
@@ -329,6 +335,18 @@ function setAddTab(tab) {
   els.searchForm.classList.toggle("hidden", tab !== "tidal");
 }
 
+function setFeedTab(tab) {
+  state.feedTab = tab;
+  document.querySelectorAll(".feed-tab").forEach((btn) => {
+    const active = btn.getAttribute("data-feed-tab") === tab;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  els.queuePane.classList.toggle("hidden", tab !== "queue");
+  els.chatterPane.classList.toggle("hidden", tab !== "chatter");
+  if (tab === "queue") scrollQueueToUpcoming();
+}
+
 function libraryTrackSet(snapshot) {
   return new Set(snapshot?.libraryTrackIds || []);
 }
@@ -425,6 +443,20 @@ async function loadLiveLyrics(triggerBtn) {
   }
 }
 
+function toastNewMessages(messages) {
+  const list = messages || [];
+  if (state.seenMessageIds === null) {
+    state.seenMessageIds = new Set(list.map((m) => m.id));
+    return;
+  }
+  const fresh = list.filter((m) => !state.seenMessageIds.has(m.id));
+  fresh
+    .slice()
+    .reverse()
+    .forEach((m) => showToast(m.text, { ok: true }));
+  state.seenMessageIds = new Set(list.map((m) => m.id));
+}
+
 function renderSnapshot(snapshot) {
   state.snapshot = snapshot;
   const np = snapshot.nowPlaying || {};
@@ -464,12 +496,15 @@ function renderSnapshot(snapshot) {
   scrollQueueToUpcoming();
 
 
+  const messages = snapshot.messages || [];
+  toastNewMessages(messages);
   els.messageList.innerHTML = "";
-  (snapshot.messages || []).slice(0, 12).forEach((msg) => {
+  messages.slice(0, 40).forEach((msg) => {
     const li = document.createElement("li");
     li.textContent = msg.text;
     els.messageList.appendChild(li);
   });
+  if (els.chatterInput) els.chatterInput.disabled = !state.guest;
 
   const bridge = snapshot.bridgeReady ? "Tidal bridge ready" : "Waiting for Tidal";
   const configured = snapshot.tidalConfigured ? "API configured" : "Set TIDAL credentials on TV";
@@ -722,6 +757,30 @@ document.querySelectorAll(".tab").forEach((btn) => {
     setAddTab(tab);
     if (tab === "library") loadLibrary(els.libraryInput.value);
   });
+});
+
+document.querySelectorAll(".feed-tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setFeedTab(btn.getAttribute("data-feed-tab"));
+  });
+});
+
+els.chatterForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const text = els.chatterInput.value.trim();
+  if (!text) return;
+  try {
+    const snapshot = await withGuest((guest) =>
+      api("/api/message", {
+        method: "POST",
+        body: JSON.stringify({ guestId: guest.id, text }),
+      }),
+    );
+    els.chatterInput.value = "";
+    renderSnapshot(snapshot);
+  } catch (error) {
+    showToast(error.message);
+  }
 });
 
 els.libraryForm.addEventListener("submit", async (event) => {

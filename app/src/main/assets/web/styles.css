@@ -289,17 +289,41 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
 .queue-actions .heart.filled { color: #ff6b8a; }
 .queue-actions .heart.filled svg { fill: currentColor; }
 
-.columns {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 16px;
+.feed-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.feed-tab {
+  background: #101b2d;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+.feed-tab.active {
+  background: var(--accent);
+  color: #062016;
 }
 
-@media (max-width: 720px) {
-  .columns { grid-template-columns: 1fr; }
+.chatter-viewport {
+  height: 22rem;
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--panel, #121a2a) 80%, transparent);
 }
-
+.messages { margin: 0; padding: 0; list-style: none; }
 .messages li { margin-bottom: 8px; }
+
+.chatter-compose {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chatter-compose input { flex: 1; }
+.chatter-compose input:disabled { opacity: 0.5; }
 
 .lyrics-modal-sheet {
   display: flex;

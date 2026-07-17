@@ -105,6 +105,37 @@ class PartySessionTest {
     }
 
     @Test
+    fun postMessageAttributesWithSaysAndTrimsText() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Tim")
+
+        party.postMessage(guest.id, "  hello everyone  ")
+
+        assertThat(party.snapshot.value.messages.any { it.text == "Tim says hello everyone" }).isTrue()
+    }
+
+    @Test
+    fun postMessageRejectsBlankText() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Tim")
+
+        val result = runCatching { party.postMessage(guest.id, "   ") }
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(party.snapshot.value.messages.none { it.text.startsWith("Tim says") }).isTrue()
+    }
+
+    @Test
+    fun postMessageTruncatesLongText() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Tim")
+
+        party.postMessage(guest.id, "x".repeat(200))
+
+        assertThat(party.snapshot.value.messages.any { it.text == "Tim says ${"x".repeat(120)}" }).isTrue()
+    }
+
+    @Test
     fun skipKeepsSungTracksInHistory() = runTest {
         val (party, _) = session()
         val guest = party.join("Ada")
@@ -145,6 +176,51 @@ class PartySessionTest {
         assertThat(bridge.skipToNextCount).isEqualTo(0)
         assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
         assertThat(party.snapshot.value.history.map { it.track.tidalTrackId }).containsExactly("1")
+    }
+
+    @Test
+    fun stalePreviousTrackMetadataDoesNotDoubleSkipAfterNearEndAdvance() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(tidalTrackId = "1", title = "One", artist = "A", durationSeconds = 10),
+        )
+        party.addTrack(
+            guest.id,
+            TrackRef(tidalTrackId = "2", title = "Two", artist = "B", durationSeconds = 20),
+        )
+        party.addTrack(
+            guest.id,
+            TrackRef(tidalTrackId = "3", title = "Three", artist = "C", durationSeconds = 30),
+        )
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1")
+
+        clock += 5_000
+        party.onTidalMetadata(
+            trackId = "1",
+            title = "One",
+            artist = "A",
+            positionMs = 8_000,
+            playing = true,
+        )
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+
+        // Expire launch grace, then deliver a delayed MediaSession snapshot from song 1.
+        clock += 5_000
+        party.onTidalMetadata(
+            trackId = "1",
+            title = "One",
+            artist = "A",
+            positionMs = 9_500,
+            playing = false,
+        )
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+        assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId }).containsExactly("3")
     }
 
     @Test

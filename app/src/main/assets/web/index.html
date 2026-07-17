@@ -55,16 +55,24 @@
         <button type="button" id="openAddModal" class="add-btn">Add a song</button>
       </div>
 
-      <div class="columns">
-        <section>
-          <h3>Session queue</h3>
+      <div class="feed">
+        <div class="feed-tabs" role="tablist">
+          <button type="button" class="feed-tab active" data-feed-tab="queue" role="tab" aria-selected="true">Session queue</button>
+          <button type="button" class="feed-tab" data-feed-tab="chatter" role="tab" aria-selected="false">Party chatter</button>
+        </div>
+        <section id="queuePane" class="feed-pane" role="tabpanel">
           <div id="queueViewport" class="queue-viewport">
             <ul id="queueList" class="list queue"></ul>
           </div>
         </section>
-        <section>
-          <h3>Party chatter</h3>
-          <ul id="messageList" class="list messages"></ul>
+        <section id="chatterPane" class="feed-pane hidden" role="tabpanel">
+          <div id="chatterViewport" class="chatter-viewport">
+            <ul id="messageList" class="list messages"></ul>
+          </div>
+          <form id="chatterForm" class="chatter-compose">
+            <input id="chatterInput" maxlength="120" autocomplete="off" placeholder="Say something to the party" />
+            <button type="submit">Send</button>
+          </form>
         </section>
       </div>
     </section>

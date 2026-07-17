@@ -147,6 +147,16 @@ class PartySession(
         }
     }
 
+    suspend fun postMessage(guestId: String, text: String) = mutex.withLock {
+        val guest = requireGuestLocked(guestId)
+        val cleaned = text.trim().take(120)
+        if (cleaned.isBlank()) {
+            error("Message can't be empty")
+        }
+        addMessageLocked("${guest.name} says $cleaned")
+        publishLocked()
+    }
+
     suspend fun openLyrics(guestId: String) = mutex.withLock {
         requireGuestLocked(guestId)
         val opener = lyricsOpener
@@ -200,21 +210,31 @@ class PartySession(
         positionMs: Long,
         playing: Boolean,
     ) = mutex.withLock {
-        this.positionMs = positionMs
-        this.isPlaying = playing
-
         val our = queue.nowPlaying()
         val launching = nowMs() < playLaunchUntilEpochMs
+        val ownsTrack = trackId != null && trackId == our?.track?.tidalTrackId
+        val historyTrackIds = queue.snapshotHistory().map { it.track.tidalTrackId }.toSet()
+
+        // Stale MediaSession events from already-sung tracks must not overwrite
+        // position or trigger reclaim / near-end against the wrong song.
+        if (our != null && trackId != null && !ownsTrack && trackId in historyTrackIds) {
+            return@withLock
+        }
+
+        if (ownsTrack || our == null || trackId == null) {
+            this.positionMs = positionMs
+            this.isPlaying = playing
+        }
 
         if (our != null && !launching) {
-            if (shouldAdvanceNearEndLocked(our)) {
+            if (ownsTrack && shouldAdvanceNearEndLocked(our)) {
                 nearEndAdvanceArmed = false
                 bridge?.pause()
                 startNextLocked(skipCurrent = true)
                 return@withLock
             }
 
-            if (trackId != null && trackId != our.track.tidalTrackId) {
+            if (trackId != null && !ownsTrack && trackId !in historyTrackIds) {
                 // Tidal advanced on its own; reclaim with our next track if we have one.
                 if (lastObservedTidalTrackId != null && trackId != lastObservedTidalTrackId) {
                     if (queue.snapshotQueue().isNotEmpty()) {
@@ -226,7 +246,7 @@ class PartySession(
             }
         }
 
-        if (!launching || trackId == null || trackId == our?.track?.tidalTrackId) {
+        if (!launching || trackId == null || ownsTrack) {
             lastObservedTidalTrackId = trackId ?: lastObservedTidalTrackId
         }
 

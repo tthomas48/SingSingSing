@@ -14,13 +14,18 @@
 - Jump-to-track sets the playhead to any session item without discarding others.
 - When the current track is within ~2.5s of its end and something is up next, we **proactively** start the next party track (pause first) so Tidal autoplay does not win the race.
 - While launching a party track, brief foreign MediaSession metadata is ignored.
-- If Tidal still switches to a different track ID afterward, we pause and reclaim with our next queued track when one exists (we do not call Tidal's skip-to-next / radio).
+- Stale MediaSession events whose track ID is already in history (already sung) are ignored so they cannot overwrite position or trigger a second skip.
+- Near-end advance only runs when the MediaSession track ID matches the party now-playing track.
+- If Tidal still switches to a different track ID afterward (not one we already finished), we pause and reclaim with our next queued track when one exists (we do not call Tidal's skip-to-next / radio).
 - Guest UI shows history + up next in a fixed-height viewport with the next track pinned at the top; scroll up for already-sung (dimmed) songs.
 
 ## Attribution
 
 - Every queue add produces a party message: "`{name} added {title} by {artist}`".
 - Join / skip / previous / reorder / jump / heart also emit short fun messages for the chatter feed.
+- Guests can post their own chatter from a compose box; user messages use the same narrative attribution: "`{name} says {text}`" (trimmed, capped at 120 chars, blank rejected).
+- The guest UI splits Session queue and Party chatter into tabs; the chatter tab uses a fixed-height viewport (~5–8 lines) like the queue, with the compose box below it.
+- New chatter messages surface as toasts everywhere so guests don't need the chatter tab open: a toast on every guest phone (deduped by message id, backlog not re-toasted on connect) and an Android `Toast` on the TV.
 - New guest joins produce a high-priority Android TV notification so arrivals are visible while Tidal has focus.
 - Messages are capped (newest kept) so the feed stays readable on phones.
 

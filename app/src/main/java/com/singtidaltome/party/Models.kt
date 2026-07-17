@@ -79,6 +79,12 @@ data class GuestActionRequest(
 )
 
 @Serializable
+data class PostMessageRequest(
+    val guestId: String,
+    val text: String,
+)
+
+@Serializable
 data class SearchRequest(
     val query: String,
 )

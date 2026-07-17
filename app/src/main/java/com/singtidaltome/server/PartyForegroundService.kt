@@ -10,7 +10,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.singtidaltome.BuildConfig
 import com.singtidaltome.R
@@ -35,6 +38,8 @@ class PartyForegroundService : Service() {
     private var server: PartyServer? = null
     private var bridge: TidalMediaControllerBridge? = null
     private var guestNotificationJob: Job? = null
+    private var messageToastJob: Job? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -74,6 +79,7 @@ class PartyForegroundService : Service() {
         bridge = mediaBridge
 
         watchForNewGuests()
+        watchForNewMessages()
         val joinUrl = partyServer.joinUrl()
         updateNotification(joinUrl)
         publishJoinUrl(joinUrl)
@@ -84,6 +90,8 @@ class PartyForegroundService : Service() {
     override fun onDestroy() {
         guestNotificationJob?.cancel()
         guestNotificationJob = null
+        messageToastJob?.cancel()
+        messageToastJob = null
         bridge?.stop()
         bridge = null
         server?.stop()
@@ -144,6 +152,24 @@ class PartyForegroundService : Service() {
             session.snapshot.collectLatest { snapshot ->
                 detector.update(snapshot.guests).forEach(::showGuestJoinedNotification)
             }
+        }
+    }
+
+    private fun watchForNewMessages() {
+        val session = SingAlongApp.instance.partySession
+        val detector = NewPartyMessageDetector(session.snapshot.value.messages)
+        messageToastJob = serviceScope.launch {
+            session.snapshot.collectLatest { snapshot ->
+                detector.update(snapshot.messages)
+                    .asReversed()
+                    .forEach { showMessageToast(it.text) }
+            }
+        }
+    }
+
+    private fun showMessageToast(text: String) {
+        mainHandler.post {
+            Toast.makeText(applicationContext, text, Toast.LENGTH_LONG).show()
         }
     }
 

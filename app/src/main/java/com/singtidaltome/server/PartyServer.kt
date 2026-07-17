@@ -11,6 +11,7 @@ import com.singtidaltome.party.JoinRequest
 import com.singtidaltome.party.JoinResponse
 import com.singtidaltome.party.PartySession
 import com.singtidaltome.party.PlayQueueItemRequest
+import com.singtidaltome.party.PostMessageRequest
 import com.singtidaltome.party.ReorderQueueRequest
 import com.singtidaltome.party.SearchRequest
 import com.singtidaltome.party.SearchResponse
@@ -221,6 +222,11 @@ class PartyServer(
                 post("/api/next") {
                     val body = call.receive<GuestActionRequest>()
                     partySession.nextTransport(body.guestId)
+                    call.respond(partySession.snapshot.value)
+                }
+                post("/api/message") {
+                    val body = call.receive<PostMessageRequest>()
+                    partySession.postMessage(body.guestId, body.text)
                     call.respond(partySession.snapshot.value)
                 }
                 post("/api/open-lyrics") {
