@@ -1,8 +1,11 @@
 # Sing Sing Sing
 
-Jackbox-style sing-along companion for **Tidal on Google TV**.
+Phone based sing-along companion for **Tidal on Google TV**.
 
-The Android TV app shows a QR code. Guests on the same Wi‑Fi open the page, join with a name, search Tidal, and manage a shared singing queue. The TV app drives the official Tidal app through Android `MediaController` APIs (no adb in production).
+![Music Queue](./img/Screenshot_20260718-140107.png)
+
+
+The Android TV app shows a QR code. Guests on the same Wi‑Fi open the page, join with a name, search Tidal, and manage a shared singing queue. The TV app drives the official Tidal app through Android `MediaController` APIs.
 
 ## Prerequisites
 
@@ -12,6 +15,8 @@ The Android TV app shows a QR code. Guests on the same Wi‑Fi open the page, jo
 - Tidal developer app credentials from [developer.tidal.com](https://developer.tidal.com)
 
 ## Configure
+
+You'll need to visit [developer.tidal.com/dashboard](https://developer.tidal.com/dashboard/) and create an Application. Put your Client ID and Client Secret in local.properties.
 
 ```properties
 # local.properties
@@ -43,18 +48,6 @@ adb install -r app-debug.apk
 adb shell am start -n com.singsingsing.debug/com.singsingsing.ui.JoinActivity
 ```
 
-### Migrating from Sing Tidal To Me
-
-The package id changed (`com.singtidaltome` → `com.singsingsing`), so this is a new app on the TV. Uninstall the old one first (debug and/or release), then install:
-
-```powershell
-adb uninstall com.singtidaltome.debug
-adb uninstall com.singtidaltome
-adb install -r app-debug.apk
-```
-
-You will need to re-grant notification access / accessibility, sign in to Tidal again, and re-pick the karaoke library playlist.
-
 ## First-run setup on the TV
 
 1. Open **Sing Sing Sing**.
@@ -65,10 +58,10 @@ You will need to re-grant notification access / accessibility, sign in to Tidal 
 
 ### Karaoke library (optional)
 
-Tidal's device-code login is only available to Tidal's own apps. This project uses **Authorization Code + PKCE** instead:
+The Karaoke library is a playlist in Tidal that saves your most commonly sung songs. You can click the heart to add to this playlist once it's setup, and it shows up as the first browsable source when adding a song.
 
-1. In [developer.tidal.com](https://developer.tidal.com) → your app → **Redirect URIs**, add the callback shown on the TV when you tap **Sign in to Tidal** (it looks like `http://<tv-lan-ip>:8787/oauth/callback`).
-2. On the TV: **Settings → Sign in to Tidal** → open the login URL / QR on your phone (same Wi‑Fi) and approve.
+1. In [developer.tidal.com/dashboard](https://developer.tidal.com/bashboard) → your app → **Redirect URIs**, add the callback shown on the TV when you tap **Sign in to Tidal** (it looks like `http://<tv-lan-ip>:8787/oauth/callback`).
+2. On the TV: **Settings → Sign in to Tidal** → open the login URL / QR on your phone (same Wi‑Fi) and approve. This will give you the Redirect URI with the correct URL if you don't have it.
 3. After the phone shows “Signed in”, on the TV choose **Choose karaoke library playlist**.
 
 ## Guest features
