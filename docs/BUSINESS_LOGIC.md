@@ -36,7 +36,8 @@
 - Catalog search returns **merged song/video hits**: each result may include a track (`song`), a music video (`video`), or both, paired by normalized title + artist. Unmatched videos appear as video-only rows. See [SONG_VIDEO.md](SONG_VIDEO.md).
 - Guests can tap an artist on a search result to browse that artist's tracks and videos (same pairing).
 - Search failures are surfaced as toast-friendly errors; the client does not auto-retry — guests decide when to try again.
-- Playback prefers `MediaController.playFromUri` with Tidal track or video URIs, then falls back to `playFromSearch` with title/artist extras (audio or video media focus).
+- Playback for audio prefers `MediaController.playFromUri` with Tidal track URIs, then falls back to `playFromSearch`. Videos are launched with `ACTION_VIEW` on `https://tidal.com/browse/video/{id}` (not MediaController play-from-uri/search). See [SONG_VIDEO.md](SONG_VIDEO.md).
+- When a queued video is now-playing, MediaSession media ids that differ from the catalog video id are still treated as owned if title/artist match — otherwise foreign reclaim would pause a few seconds into the video.
 - Queue adds of videos use attribution `added video`; audio stays `added`. Song and video IDs are distinct, so both may be active in the queue.
 
 ## Karaoke library

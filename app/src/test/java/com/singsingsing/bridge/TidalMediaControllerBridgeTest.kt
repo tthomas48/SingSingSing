@@ -36,4 +36,12 @@ class TidalMediaControllerBridgeTest {
             "https://tidal.com/video/456",
         ).inOrder()
     }
+
+    @Test
+    fun videoDeepLinkStringsPreferHttpsBrowse() {
+        assertThat(TidalMediaControllerBridge.videoDeepLinkStrings("28423096")).containsExactly(
+            "https://tidal.com/browse/video/28423096",
+            "tidal://video/28423096",
+        ).inOrder()
+    }
 }

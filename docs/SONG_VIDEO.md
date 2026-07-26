@@ -41,9 +41,19 @@ Heart-to-library posts the correct JSON:API type (`tracks` or `videos`) into the
 
 ## Playback
 
-`TidalMediaControllerBridge.playTrack` tries:
+Videos are started with an Activity deep link (confirmed on Google TV):
 
-- `tidal://video/{id}` / `https://tidal.com/browse/video/{id}` / `https://tidal.com/video/{id}` for videos
-- the existing track URI set for audio
+```text
+adb shell am start -a android.intent.action.VIEW -d "https://tidal.com/browse/video/{id}"
+```
 
-Then falls back to `playFromSearch` with video vs audio media-focus extras. Which URI the Tidal TV `MediaSession` accepts should be confirmed on device; keep the working candidates.
+`TidalMediaControllerBridge.playTrack` for `mediaType == video`:
+
+1. Ensures Tidal is alive
+2. `Intent.ACTION_VIEW` → `https://tidal.com/browse/video/{id}` (package `com.aspiro.tidal`), then optional `tidal://video/{id}`
+3. Re-attaches the MediaController after a short delay
+4. Does **not** fall back to `playFromUri` / `playFromSearch` (those start audio)
+
+Audio tracks still use `playFromUri` then `playFromSearch`.
+
+After a video is playing, pause/skip/position still go through MediaController. Tidal’s MediaSession media id often differs from the catalog video id; party reclaim treats a queued video as still owned when the session title/artist matches, so we do not pause mid-video as a “foreign” track.

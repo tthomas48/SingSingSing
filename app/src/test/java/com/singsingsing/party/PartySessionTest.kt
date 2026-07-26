@@ -290,6 +290,71 @@ class PartySessionTest {
     }
 
     @Test
+    fun videoWithMismatchedMediaIdAndSameTitleDoesNotPause() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "v1",
+                title = "Wolf Like Me",
+                artist = "TV On The Radio",
+                durationSeconds = 200,
+                mediaType = MEDIA_TYPE_VIDEO,
+            ),
+        )
+
+        party.onTidalMetadata("v1", "Wolf Like Me", "TV On The Radio", positionMs = 500, playing = true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "audio-95574931",
+            title = "Wolf Like Me",
+            artist = "TV On The Radio",
+            positionMs = 2_000,
+            playing = true,
+        )
+
+        assertThat(bridge.pauseCount).isEqualTo(0)
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isTrue()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("v1")
+        assertThat(party.snapshot.value.nowPlaying.positionMs).isEqualTo(2_000)
+    }
+
+    @Test
+    fun videoWithDifferentTitleStillReclaims() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "v1",
+                title = "Wolf Like Me",
+                artist = "TV On The Radio",
+                durationSeconds = 200,
+                mediaType = MEDIA_TYPE_VIDEO,
+            ),
+        )
+        party.addTrack(guest.id, TrackRef("2", "Two", "B", durationSeconds = 200))
+
+        party.onTidalMetadata("v1", "Wolf Like Me", "TV On The Radio", positionMs = 500, playing = true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "radio-1",
+            title = "Completely Different Song",
+            artist = "Someone Else",
+            positionMs = 0,
+            playing = true,
+        )
+
+        assertThat(bridge.pauseCount).isAtLeast(1)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+    }
+
+    @Test
     fun foreignTrackWithEmptyUpNextPausesWithoutAdvancing() = runTest {
         var clock = 1_000_000L
         val (party, bridge) = session(nowMs = { clock })

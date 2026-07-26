@@ -233,7 +233,13 @@ class PartySession(
         }
         val our = queue.nowPlaying()
         val launching = nowMs() < playLaunchUntilEpochMs
-        val ownsTrack = trackId != null && trackId == our?.track?.tidalTrackId
+        val ownsById = trackId != null && trackId == our?.track?.tidalTrackId
+        // Video deep links often surface a different MediaSession media id than the
+        // Tidal video catalog id. Treat matching title as still "ours" so we do not
+        // pause mid-video as a foreign reclaim.
+        val ownsByVideoMetadata = our?.track?.isVideo == true &&
+            metadataMatchesQueuedLocked(our.track, title, artist)
+        val ownsTrack = ownsById || ownsByVideoMetadata
         val historyTrackIds = queue.snapshotHistory().map { it.track.tidalTrackId }.toSet()
 
         // Stale MediaSession events from already-sung tracks must not overwrite
@@ -304,6 +310,23 @@ class PartySession(
 
     private fun requireGuestLocked(guestId: String): Guest =
         guests[guestId] ?: error("Unknown guest")
+
+    /**
+     * Loose title/artist match used when a queued video's MediaSession media id
+     * does not equal the catalog video id.
+     */
+    private fun metadataMatchesQueuedLocked(
+        track: TrackRef,
+        title: String?,
+        artist: String?,
+    ): Boolean {
+        if (title.isNullOrBlank()) return false
+        if (title.equals(track.title, ignoreCase = true)) return true
+        val artistNeedle = track.artist.substringBefore(",").trim()
+        if (artistNeedle.isBlank() || artist.isNullOrBlank()) return false
+        return artist.contains(artistNeedle, ignoreCase = true) &&
+            title.contains(track.title.take(12), ignoreCase = true)
+    }
 
     private fun shouldAdvanceNearEndLocked(our: QueueItem): Boolean {
         if (!nearEndAdvanceArmed) return false
