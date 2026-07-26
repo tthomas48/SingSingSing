@@ -86,6 +86,28 @@ class PartySessionTest {
     }
 
     @Test
+    fun addingVideoUsesVideoAttribution() = runTest {
+        val (party, bridge) = session()
+        val guest = party.join("Tim")
+        val video = TrackRef(
+            tidalTrackId = "vid-1",
+            title = "Wolf Like Me",
+            artist = "TV On The Radio",
+            mediaType = MEDIA_TYPE_VIDEO,
+        )
+
+        party.addTrack(guest.id, video)
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("vid-1")
+        assertThat(bridge.played[0].mediaType).isEqualTo(MEDIA_TYPE_VIDEO)
+        assertThat(
+            party.snapshot.value.messages.any {
+                it.text == "Tim added video Wolf Like Me by TV On The Radio"
+            },
+        ).isTrue()
+    }
+
+    @Test
     fun secondTrackWaitsInQueueUntilSkip() = runTest {
         val (party, bridge) = session()
         val guest = party.join("Ada")

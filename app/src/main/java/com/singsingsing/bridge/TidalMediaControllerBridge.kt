@@ -124,11 +124,7 @@ class TidalMediaControllerBridge(
             return@withContext false
         }
 
-        val uriCandidates = listOf(
-            Uri.parse("tidal://track/${track.tidalTrackId}"),
-            Uri.parse("https://tidal.com/browse/track/${track.tidalTrackId}"),
-            Uri.parse("https://tidal.com/track/${track.tidalTrackId}"),
-        )
+        val uriCandidates = playUriCandidates(track)
         for (uri in uriCandidates) {
             try {
                 controls.playFromUri(uri, Bundle())
@@ -143,14 +139,19 @@ class TidalMediaControllerBridge(
         }
 
         val query = listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" ")
+        val mediaFocus = if (track.isVideo) {
+            "vnd.android.cursor.item/video"
+        } else {
+            "vnd.android.cursor.item/audio"
+        }
         val extras = Bundle().apply {
-            putString(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/audio")
+            putString(MediaStore.EXTRA_MEDIA_FOCUS, mediaFocus)
             putString(MediaStore.EXTRA_MEDIA_TITLE, track.title)
             putString(MediaStore.EXTRA_MEDIA_ARTIST, track.artist)
             putString(MediaStore.EXTRA_MEDIA_ALBUM, track.album)
         }
         controls.playFromSearch(query, extras)
-        Log.i(TAG, "playFromSearch query=$query")
+        Log.i(TAG, "playFromSearch query=$query mediaType=${track.mediaType}")
         delay(1_200)
         true
     }
@@ -224,5 +225,18 @@ class TidalMediaControllerBridge(
         private const val TAG = "TidalBridge"
         const val TIDAL_PACKAGE = "com.aspiro.tidal"
         const val TIDAL_TV_LAUNCHER = "com.aspiro.wamp.tv.TvLauncherActivity"
+
+        fun playUriCandidates(track: TrackRef): List<Uri> =
+            playUriStrings(track).map { Uri.parse(it) }
+
+        fun playUriStrings(track: TrackRef): List<String> {
+            val kind = if (track.isVideo) "video" else "track"
+            val id = track.tidalTrackId
+            return listOf(
+                "tidal://$kind/$id",
+                "https://tidal.com/browse/$kind/$id",
+                "https://tidal.com/$kind/$id",
+            )
+        }
     }
 }

@@ -16,10 +16,10 @@ Sing Sing Sing is an all-in-one Android TV app that hosts a Jackbox-style party 
 ## Data flow
 
 1. Guests join `http://<tv-ip>:8787`, enter a name, and open the Add Song modal.
-2. Library browse filters the host-selected Tidal playlist; full catalog search uses the app token.
-3. Adding a track updates our party queue and asks the bridge to start that track on Tidal when nothing is playing.
+2. Library browse filters the host-selected Tidal playlist; full catalog search uses the app token and returns paired song/video hits.
+3. Adding a track or video updates our party queue and asks the bridge to start that item on Tidal when nothing is playing.
 4. Transport controls, reorder, jump-to-track, and auto-advance keep our queue authoritative.
-5. Hearting a queued track appends it to the library playlist via the user token.
+5. Hearting a queued item appends that track or video to the library playlist via the user token.
 6. Live state is pushed to phones over WebSocket.
 
 The persisted party queue and Tidal OAuth refresh token survive process death and app upgrades (`adb install -r`). A full uninstall or clear-data removes both.

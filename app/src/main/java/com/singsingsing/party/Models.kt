@@ -17,6 +17,24 @@ data class TrackRef(
     val durationSeconds: Int = 0,
     val artworkUrl: String? = null,
     val artistId: String? = null,
+    /** `"track"` (audio) or `"video"` (music video). */
+    val mediaType: String = MEDIA_TYPE_TRACK,
+) {
+    val isVideo: Boolean get() = mediaType == MEDIA_TYPE_VIDEO
+}
+
+const val MEDIA_TYPE_TRACK = "track"
+const val MEDIA_TYPE_VIDEO = "video"
+
+@Serializable
+data class SearchHit(
+    val title: String,
+    val artist: String,
+    val album: String = "",
+    val artworkUrl: String? = null,
+    val artistId: String? = null,
+    val song: TrackRef? = null,
+    val video: TrackRef? = null,
 )
 
 @Serializable
@@ -91,7 +109,7 @@ data class SearchRequest(
 
 @Serializable
 data class SearchResponse(
-    val tracks: List<TrackRef>,
+    val results: List<SearchHit>,
 )
 
 @Serializable

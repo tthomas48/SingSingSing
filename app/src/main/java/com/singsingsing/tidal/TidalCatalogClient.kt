@@ -1,7 +1,10 @@
 package com.singsingsing.tidal
 
 import android.util.Log
+import com.singsingsing.party.MEDIA_TYPE_TRACK
+import com.singsingsing.party.MEDIA_TYPE_VIDEO
 import com.singsingsing.party.PlaylistSummary
+import com.singsingsing.party.SearchHit
 import com.singsingsing.party.TrackRef
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -47,7 +50,7 @@ class TidalCatalogClient(
         libraryTrackCache?.clear()
     }
 
-    suspend fun searchTracks(query: String, limit: Int = 20): List<TrackRef> {
+    suspend fun search(query: String, limit: Int = 20): List<SearchHit> {
         val cleaned = query.trim()
         if (cleaned.isEmpty()) return emptyList()
         if (!isConfigured()) {
@@ -60,36 +63,37 @@ class TidalCatalogClient(
         val url = "$BASE_URL/searchResults/$encoded"
         Log.i(
             TidalApiLog.TAG,
-            "searchTracks query='$cleaned' encoded='$encoded' country=$countryCode limit=$limit tokenLen=${token.length}",
+            "search query='$cleaned' encoded='$encoded' country=$countryCode limit=$limit tokenLen=${token.length}",
         )
         val response: SearchApiResponse = try {
             TidalApiLog.get(http, url) {
                 header(HttpHeaders.Authorization, "Bearer $token")
                 header(HttpHeaders.Accept, ACCEPT_JSON_API)
                 parameter("countryCode", countryCode)
-                parameter("include", "tracks.artists,tracks.albums")
+                parameter("include", "tracks.artists,tracks.albums,videos.artists,videos.thumbnailArt")
             }
         } catch (error: Throwable) {
-            Log.e(TidalApiLog.TAG, "searchTracks failed for query='$cleaned'", error)
+            Log.e(TidalApiLog.TAG, "search failed for query='$cleaned'", error)
             throw IllegalStateException("Tidal search failed — try again", error)
         }
 
-        val tracks = parseSearch(response).take(limit)
+        val hits = parseSearchHits(response).take(limit)
         Log.i(
             TidalApiLog.TAG,
-            "searchTracks query='$cleaned' included=${response.included.orEmpty().size} parsed=${tracks.size} " +
-                "titles=${tracks.take(5).joinToString { "${it.title} [${it.artist}]" }}",
+            "search query='$cleaned' included=${response.included.orEmpty().size} hits=${hits.size} " +
+                "titles=${hits.take(5).joinToString { "${it.title} [${it.artist}] song=${it.song != null} video=${it.video != null}" }}",
         )
-        return tracks
+        return hits
     }
 
-    suspend fun getArtistTracks(artistId: String, limit: Int = 25): List<TrackRef> {
+    suspend fun getArtistSearchHits(artistId: String, limit: Int = 25): List<SearchHit> {
         val cleaned = artistId.trim()
         require(cleaned.isNotEmpty()) { "artistId is required" }
         val token = authClient.accessToken()
-        val url = "$BASE_URL/artists/$cleaned/relationships/tracks"
-        Log.i(TidalApiLog.TAG, "getArtistTracks artistId=$cleaned")
-        val response: RelationshipItemsResponse = TidalApiLog.get(http, url) {
+        Log.i(TidalApiLog.TAG, "getArtistSearchHits artistId=$cleaned")
+
+        val tracksUrl = "$BASE_URL/artists/$cleaned/relationships/tracks"
+        val tracksResponse: RelationshipItemsResponse = TidalApiLog.get(http, tracksUrl) {
             header(HttpHeaders.Authorization, "Bearer $token")
             header(HttpHeaders.Accept, ACCEPT_JSON_API)
             parameter("countryCode", countryCode)
@@ -97,7 +101,23 @@ class TidalCatalogClient(
             parameter("include", "tracks.artists,tracks.albums")
             parameter("page[limit]", limit.toString())
         }
-        return parsePlaylistItems(response).take(limit)
+        val tracks = parsePlaylistItems(tracksResponse)
+
+        val videosUrl = "$BASE_URL/artists/$cleaned/relationships/videos"
+        val videos = runCatching {
+            val videosResponse: RelationshipItemsResponse = TidalApiLog.get(http, videosUrl) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.Accept, ACCEPT_JSON_API)
+                parameter("countryCode", countryCode)
+                parameter("include", "videos.artists,videos.thumbnailArt")
+                parameter("page[limit]", limit.toString())
+            }
+            parseRelationshipVideos(videosResponse)
+        }.onFailure { error ->
+            Log.w(TidalApiLog.TAG, "getArtistSearchHits videos failed artistId=$cleaned", error)
+        }.getOrDefault(emptyList())
+
+        return pairSearchHits(tracks, videos).take(limit)
     }
 
     suspend fun currentUserId(): String {
@@ -283,7 +303,7 @@ class TidalCatalogClient(
                 header(HttpHeaders.Authorization, "Bearer $token")
                 header(HttpHeaders.Accept, ACCEPT_JSON_API)
                 parameter("countryCode", countryCode)
-                parameter("include", "items.tracks:artists,items.tracks:albums")
+                parameter("include", "items.tracks:artists,items.tracks:albums,items.videos:artists,items.videos:thumbnailArt")
                 parameter("page[limit]", "50")
                 if (cursor != null) parameter("page[cursor]", cursor)
             }
@@ -299,18 +319,23 @@ class TidalCatalogClient(
         return collected.distinctBy { it.tidalTrackId }
     }
 
-    suspend fun addTrackToLibrary(trackId: String) {
+    suspend fun addTrackToLibrary(trackId: String, mediaType: String = MEDIA_TYPE_TRACK) {
         val playlistId = authClient.libraryPlaylistId()
             ?: error("Host hasn't set a karaoke library yet")
-        addTrackToPlaylist(playlistId, trackId)
+        addTrackToPlaylist(playlistId, trackId, mediaType)
         invalidateLibraryCache()
         getLibraryTracks(forceRefresh = true)
     }
 
-    suspend fun addTrackToPlaylist(playlistId: String, trackId: String) {
+    suspend fun addTrackToPlaylist(
+        playlistId: String,
+        trackId: String,
+        mediaType: String = MEDIA_TYPE_TRACK,
+    ) {
         val token = authClient.userAccessToken()
+        val resourceType = if (mediaType == MEDIA_TYPE_VIDEO) "videos" else "tracks"
         val url = "$BASE_URL/playlists/$playlistId/relationships/items"
-        Log.i(TidalApiLog.TAG, "Adding trackId=$trackId to playlistId=$playlistId")
+        Log.i(TidalApiLog.TAG, "Adding $resourceType id=$trackId to playlistId=$playlistId")
         TidalApiLog.post<String>(http, url) {
             header(HttpHeaders.Authorization, "Bearer $token")
             header(HttpHeaders.Accept, ACCEPT_JSON_API)
@@ -318,61 +343,102 @@ class TidalCatalogClient(
             parameter("countryCode", countryCode)
             setBody(
                 AddPlaylistItemsBody(
-                    data = listOf(RelationshipRef(id = trackId, type = "tracks")),
+                    data = listOf(RelationshipRef(id = trackId, type = resourceType)),
                 ),
             )
         }
     }
 
-    internal fun parseSearch(response: SearchApiResponse): List<TrackRef> {
+    internal fun parseSearchHits(response: SearchApiResponse): List<SearchHit> {
         val included = response.included.orEmpty()
         val trackIdsInOrder = response.data?.relationships?.tracks?.data.orEmpty()
             .filter { it.type == "tracks" }
             .map { it.id }
-        val tracks = mapIncludedTracks(included)
-        return if (trackIdsInOrder.isEmpty()) {
-            // Fallback: only top-level included tracks (still excludes non-tracks).
-            tracks
+        val videoIdsInOrder = response.data?.relationships?.videos?.data.orEmpty()
+            .filter { it.type == "videos" }
+            .map { it.id }
+        val tracksById = mapIncludedMedia(included, type = "tracks", mediaType = MEDIA_TYPE_TRACK)
+            .associateBy { it.tidalTrackId }
+        val videosById = mapIncludedMedia(included, type = "videos", mediaType = MEDIA_TYPE_VIDEO)
+            .associateBy { it.tidalTrackId }
+
+        val tracks = if (trackIdsInOrder.isEmpty()) {
+            tracksById.values.toList()
         } else {
-            val byId = tracks.associateBy { it.tidalTrackId }
-            trackIdsInOrder.mapNotNull { byId[it] }
+            trackIdsInOrder.mapNotNull { tracksById[it] }
         }
+        val videos = if (videoIdsInOrder.isEmpty()) {
+            // Only use included videos when the relationship lists them, or when no track
+            // relationship ordering exists either (fallback for sparse fixtures).
+            if (trackIdsInOrder.isEmpty()) videosById.values.toList() else emptyList()
+        } else {
+            videoIdsInOrder.mapNotNull { videosById[it] }
+        }
+        return pairSearchHits(tracks, videos)
     }
+
+    /** Track-only parse kept for playlist/artist track relationship responses. */
+    internal fun parseSearch(response: SearchApiResponse): List<TrackRef> =
+        parseSearchHits(response).mapNotNull { it.song }
 
     internal fun parsePlaylistItems(response: RelationshipItemsResponse): List<TrackRef> {
         val included = response.included.orEmpty()
-        val trackIdsInOrder = response.data.orEmpty()
-            .filter { it.type == "tracks" }
-            .map { it.id }
-        val tracks = mapIncludedTracks(included)
-        return if (trackIdsInOrder.isEmpty()) {
-            tracks
+        val itemRefs = response.data.orEmpty()
+            .filter { it.type == "tracks" || it.type == "videos" }
+        val mediaById = (
+            mapIncludedMedia(included, type = "tracks", mediaType = MEDIA_TYPE_TRACK) +
+                mapIncludedMedia(included, type = "videos", mediaType = MEDIA_TYPE_VIDEO)
+            ).associateBy { it.tidalTrackId }
+
+        return if (itemRefs.isEmpty()) {
+            mediaById.values.toList()
         } else {
-            // Preserve playlist order from relationship data.
-            val byId = tracks.associateBy { it.tidalTrackId }
-            trackIdsInOrder.mapNotNull { byId[it] }.ifEmpty { tracks }
+            itemRefs.mapNotNull { mediaById[it.id] }.ifEmpty { mediaById.values.toList() }
         }
     }
 
-    private fun mapIncludedTracks(included: List<IncludedResource>): List<TrackRef> {
-        val tracks = included.filter { it.type == "tracks" }
+    internal fun parseRelationshipVideos(response: RelationshipItemsResponse): List<TrackRef> {
+        val included = response.included.orEmpty()
+        val videoIdsInOrder = response.data.orEmpty()
+            .filter { it.type == "videos" }
+            .map { it.id }
+        val videosById = mapIncludedMedia(included, type = "videos", mediaType = MEDIA_TYPE_VIDEO)
+            .associateBy { it.tidalTrackId }
+        return if (videoIdsInOrder.isEmpty()) {
+            videosById.values.toList()
+        } else {
+            videoIdsInOrder.mapNotNull { videosById[it] }
+        }
+    }
+
+    private fun mapIncludedMedia(
+        included: List<IncludedResource>,
+        type: String,
+        mediaType: String,
+    ): List<TrackRef> {
+        val resources = included.filter { it.type == type }
         val artistsById = included.filter { it.type == "artists" }.associateBy { it.id }
         val albumsById = included.filter { it.type == "albums" }.associateBy { it.id }
+        val artworksById = included.filter { it.type == "artworks" }.associateBy { it.id }
 
-        return tracks.map { track ->
-            val artistIds = track.relationships?.artists?.data.orEmpty().map { it.id }
+        return resources.map { resource ->
+            val artistIds = resource.relationships?.artists?.data.orEmpty().map { it.id }
             val artistNames = artistIds.mapNotNull { artistsById[it]?.attributes?.name }
-            val albumId = track.relationships?.albums?.data.orEmpty().firstOrNull()?.id
+            val albumId = resource.relationships?.albums?.data.orEmpty().firstOrNull()?.id
             val album = albumId?.let { albumsById[it] }
+            val thumbId = resource.relationships?.thumbnailArt?.data.orEmpty().firstOrNull()?.id
+            val thumbnail = thumbId?.let { artworksById[it] }
             TrackRef(
-                tidalTrackId = track.id,
-                title = track.attributes?.title.orEmpty(),
+                tidalTrackId = resource.id,
+                title = resource.attributes?.title.orEmpty(),
                 artist = artistNames.joinToString(", ").ifBlank { "Unknown artist" },
                 album = album?.attributes?.title.orEmpty(),
-                durationSeconds = track.attributes?.durationSecondsOrZero() ?: 0,
-                artworkUrl = album?.attributes?.imageLinks?.firstOrNull()?.href
-                    ?: track.attributes?.imageLinks?.firstOrNull()?.href,
+                durationSeconds = resource.attributes?.durationSecondsOrZero() ?: 0,
+                artworkUrl = thumbnail?.attributes?.imageLinks?.firstOrNull()?.href
+                    ?: album?.attributes?.imageLinks?.firstOrNull()?.href
+                    ?: resource.attributes?.imageLinks?.firstOrNull()?.href,
                 artistId = artistIds.firstOrNull(),
+                mediaType = mediaType,
             )
         }.filter { it.tidalTrackId.isNotBlank() && it.title.isNotBlank() }
     }
@@ -481,6 +547,8 @@ data class ResourceRelationships(
     val artists: RelationshipList? = null,
     val albums: RelationshipList? = null,
     val tracks: RelationshipList? = null,
+    val videos: RelationshipList? = null,
+    val thumbnailArt: RelationshipList? = null,
 )
 
 @Serializable

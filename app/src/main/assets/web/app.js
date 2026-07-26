@@ -5,7 +5,7 @@ const state = {
   feedTab: "queue",
   seenMessageIds: null,
   lastSearchQuery: "",
-  lastSearchTracks: [],
+  lastSearchHits: [],
   libraryCache: null,
   addBusyCount: 0,
   queueScrollReady: false,
@@ -511,7 +511,8 @@ function renderSnapshot(snapshot) {
   const np = snapshot.nowPlaying || {};
   const nextTrackId = np.track?.tidalTrackId || null;
   els.nowTitle.textContent = np.track?.title || "Nothing yet";
-  els.nowArtist.textContent = np.track?.artist || "";
+  const videoCue = np.track?.mediaType === "video" ? " · Video" : "";
+  els.nowArtist.textContent = (np.track?.artist || "") + videoCue;
   els.nowBy.textContent = np.addedByName ? `Queued by ${np.addedByName}` : "";
   updatePlayPauseButton(!!np.isPlaying);
   updateNowActions(snapshot);
@@ -601,11 +602,14 @@ function buildQueueItem(item, { history, index = 0, count = 0, inLibrary }) {
   const hearted = inLibrary.has(item.track.tidalTrackId);
   const canMoveUp = index > 0;
   const canMoveDown = index < count - 1;
+  const videoBadge = item.track.mediaType === "video"
+    ? `<span class="media-badge">Video</span>`
+    : "";
   li.innerHTML = history
     ? `
       <span class="reorder-spacer" aria-hidden="true"></span>
       <div>
-        <strong>${escapeHtml(item.track.title)}</strong>
+        <strong>${escapeHtml(item.track.title)}${videoBadge}</strong>
         <span>${escapeHtml(item.track.artist)} · added by ${escapeHtml(item.addedByName)}</span>
       </div>
       <div class="queue-actions">
@@ -615,7 +619,7 @@ function buildQueueItem(item, { history, index = 0, count = 0, inLibrary }) {
     : `
       <button type="button" class="reorder-btn" data-move-up aria-label="Move up" ${canMoveUp ? "" : "disabled"}>${ICONS.up}</button>
       <div>
-        <strong>${escapeHtml(item.track.title)}</strong>
+        <strong>${escapeHtml(item.track.title)}${videoBadge}</strong>
         <span>${escapeHtml(item.track.artist)} · added by ${escapeHtml(item.addedByName)}</span>
       </div>
       <div class="queue-actions">
@@ -687,7 +691,37 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function renderSearchResults(tracks, { artistBrowse = null } = {}) {
+function bindAddTrackButton(button, track, queuedIds) {
+  if (!button || !track?.tidalTrackId) return;
+  if (queuedIds.has(track.tidalTrackId)) return;
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.classList.add("busy");
+    button.setAttribute("aria-busy", "true");
+    setAddBusy(true);
+    try {
+      await withGuest((guest) =>
+        api("/api/queue", {
+          method: "POST",
+          body: JSON.stringify({ guestId: guest.id, track }),
+        }),
+      );
+      markAddButtonAdded(button);
+      queuedIds.add(track.tidalTrackId);
+      const label = track.mediaType === "video" ? `Queued video ${track.title}` : `Queued ${track.title}`;
+      showToast(label, { ok: true });
+    } catch (error) {
+      button.disabled = false;
+      button.classList.remove("busy");
+      button.removeAttribute("aria-busy");
+      showToast(error.message);
+    } finally {
+      setAddBusy(false);
+    }
+  });
+}
+
+function renderSearchHits(hits, { artistBrowse = null } = {}) {
   state.artistBrowse = artistBrowse;
   els.searchResults.innerHTML = "";
   const queuedIds = activeQueuedTrackIds(state.snapshot);
@@ -697,13 +731,83 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
     header.className = "results-header";
     header.innerHTML = `
       <button type="button" class="link-btn" data-back-search>← Back</button>
-      <strong>Top tracks — ${escapeHtml(artistBrowse.name)}</strong>
+      <strong>Top results — ${escapeHtml(artistBrowse.name)}</strong>
     `;
     header.querySelector("[data-back-search]").addEventListener("click", () => {
-      renderSearchResults(state.lastSearchTracks);
+      renderSearchHits(state.lastSearchHits);
     });
     els.searchResults.appendChild(header);
   }
+
+  if (!hits.length) {
+    const empty = document.createElement("div");
+    empty.className = "result";
+    empty.innerHTML = `<span>No results found</span>`;
+    els.searchResults.appendChild(empty);
+    return;
+  }
+
+  hits.forEach((hit) => {
+    const row = document.createElement("div");
+    row.className = "result";
+    const artistLabel = escapeHtml(hit.artist) || "Unknown artist";
+    const albumBit = hit.album ? ` · ${escapeHtml(hit.album)}` : "";
+    const artistId = hit.artistId || hit.song?.artistId || hit.video?.artistId;
+    const artistControl = artistId && !artistBrowse
+      ? `<button type="button" class="artist-link" data-artist>${artistLabel}</button>${albumBit}`
+      : `<span>${artistLabel}${albumBit}</span>`;
+
+    const songQueued = hit.song && queuedIds.has(hit.song.tidalTrackId);
+    const videoQueued = hit.video && queuedIds.has(hit.video.tidalTrackId);
+    const actions = [];
+    if (hit.song) {
+      actions.push(
+        `<button type="button" data-add-song ${songQueued ? "disabled" : ""} class="${songQueued ? "added" : ""}">${songQueued ? "Added" : "Song"}</button>`,
+      );
+    }
+    if (hit.video) {
+      actions.push(
+        `<button type="button" data-add-video ${videoQueued ? "disabled" : ""} class="${videoQueued ? "added" : ""}">${videoQueued ? "Added" : "Video"}</button>`,
+      );
+    }
+
+    row.innerHTML = `
+      <div>
+        <strong>${escapeHtml(hit.title)}</strong>
+        ${artistControl}
+      </div>
+      <div class="result-actions">${actions.join("")}</div>
+    `;
+
+    const artistBtn = row.querySelector("[data-artist]");
+    if (artistBtn && artistId) {
+      artistBtn.addEventListener("click", async () => {
+        showSearchLoading(`Loading songs by ${hit.artist || "artist"}…`);
+        setAddBusy(true);
+        try {
+          const payload = await api(`/api/artists/${encodeURIComponent(artistId)}/tracks`);
+          renderSearchHits(payload.results || [], {
+            artistBrowse: { id: artistId, name: hit.artist },
+          });
+        } catch (error) {
+          showToast(error.message);
+          renderSearchHits(hits, { artistBrowse });
+        } finally {
+          setAddBusy(false);
+        }
+      });
+    }
+
+    bindAddTrackButton(row.querySelector("[data-add-song]"), hit.song, queuedIds);
+    bindAddTrackButton(row.querySelector("[data-add-video]"), hit.video, queuedIds);
+    els.searchResults.appendChild(row);
+  });
+}
+
+function renderSearchResults(tracks, { artistBrowse = null } = {}) {
+  state.artistBrowse = artistBrowse;
+  els.searchResults.innerHTML = "";
+  const queuedIds = activeQueuedTrackIds(state.snapshot);
 
   if (!tracks.length) {
     const empty = document.createElement("div");
@@ -718,62 +822,17 @@ function renderSearchResults(tracks, { artistBrowse = null } = {}) {
     row.className = "result";
     const artistLabel = escapeHtml(track.artist) || "Unknown artist";
     const albumBit = track.album ? ` · ${escapeHtml(track.album)}` : "";
-    const artistControl = track.artistId && !artistBrowse
-      ? `<button type="button" class="artist-link" data-artist>${artistLabel}</button>${albumBit}`
-      : `<span>${artistLabel}${albumBit}</span>`;
+    const artistControl = `<span>${artistLabel}${albumBit}</span>`;
     const alreadyQueued = queuedIds.has(track.tidalTrackId);
+    const addLabel = track.mediaType === "video" ? "Video" : "Add";
     row.innerHTML = `
       <div>
-        <strong>${escapeHtml(track.title)}</strong>
+        <strong>${escapeHtml(track.title)}${track.mediaType === "video" ? '<span class="media-badge">Video</span>' : ""}</strong>
         ${artistControl}
       </div>
-      <button type="button" data-add ${alreadyQueued ? "disabled" : ""} class="${alreadyQueued ? "added" : ""}">${alreadyQueued ? "Added" : "Add"}</button>
+      <button type="button" data-add ${alreadyQueued ? "disabled" : ""} class="${alreadyQueued ? "added" : ""}">${alreadyQueued ? "Added" : addLabel}</button>
     `;
-    const artistBtn = row.querySelector("[data-artist]");
-    if (artistBtn) {
-      artistBtn.addEventListener("click", async () => {
-        showSearchLoading(`Loading tracks by ${track.artist || "artist"}…`);
-        setAddBusy(true);
-        try {
-          const payload = await api(`/api/artists/${encodeURIComponent(track.artistId)}/tracks`);
-          renderSearchResults(payload.tracks || [], {
-            artistBrowse: { id: track.artistId, name: track.artist },
-          });
-        } catch (error) {
-          showToast(error.message);
-          renderSearchResults(tracks, { artistBrowse });
-        } finally {
-          setAddBusy(false);
-        }
-      });
-    }
-    const addBtn = row.querySelector("[data-add]");
-    if (!alreadyQueued) {
-      addBtn.addEventListener("click", async () => {
-        addBtn.disabled = true;
-        addBtn.classList.add("busy");
-        addBtn.setAttribute("aria-busy", "true");
-        setAddBusy(true);
-        try {
-          await withGuest((guest) =>
-            api("/api/queue", {
-              method: "POST",
-              body: JSON.stringify({ guestId: guest.id, track }),
-            }),
-          );
-          markAddButtonAdded(addBtn);
-          queuedIds.add(track.tidalTrackId);
-          showToast(`Queued ${track.title}`, { ok: true });
-        } catch (error) {
-          addBtn.disabled = false;
-          addBtn.classList.remove("busy");
-          addBtn.removeAttribute("aria-busy");
-          showToast(error.message);
-        } finally {
-          setAddBusy(false);
-        }
-      });
-    }
+    bindAddTrackButton(row.querySelector("[data-add]"), track, queuedIds);
     els.searchResults.appendChild(row);
   });
 }
@@ -893,14 +952,14 @@ els.searchForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ query }),
     });
     console.log("[search] results", {
-      count: (payload.tracks || []).length,
-      sample: (payload.tracks || []).slice(0, 5).map((t) => `${t.title} — ${t.artist}`),
+      count: (payload.results || []).length,
+      sample: (payload.results || []).slice(0, 5).map((h) => `${h.title} — ${h.artist}`),
     });
     state.lastSearchQuery = query;
-    state.lastSearchTracks = payload.tracks || [];
-    renderSearchResults(state.lastSearchTracks);
-    if (!(payload.tracks || []).length) {
-      showToast("No tracks found");
+    state.lastSearchHits = payload.results || [];
+    renderSearchHits(state.lastSearchHits);
+    if (!(payload.results || []).length) {
+      showToast("No results found");
     }
   } catch (error) {
     console.error("[search] failed", error);

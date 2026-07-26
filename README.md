@@ -68,6 +68,7 @@ The Karaoke library is a playlist in Tidal that saves your most commonly sung so
 
 - Join with a name
 - Browse the karaoke library playlist / search all Tidal
+- Add the audio song or the music video from merged search results
 - Add songs to the shared queue with attribution messages
 - Play / pause / skip / previous / reorder / jump-to-track
 - Heart a queued track into the karaoke library playlist
@@ -77,4 +78,5 @@ The Karaoke library is a playlist in Tidal that saves your most commonly sung so
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/BUSINESS_LOGIC.md](docs/BUSINESS_LOGIC.md)
+- [docs/SONG_VIDEO.md](docs/SONG_VIDEO.md) — song vs music-video search/add
 - [docs/ROBOT_KARAOKE.md](docs/ROBOT_KARAOKE.md) — future: substitute-lyrics ("robot karaoke") design

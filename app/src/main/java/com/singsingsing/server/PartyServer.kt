@@ -161,9 +161,9 @@ class PartyServer(
                     val body = call.receive<SearchRequest>()
                     Log.i(TAG, "POST /api/search query='${body.query}'")
                     try {
-                        val tracks = partySession.search(body.query)
-                        Log.i(TAG, "POST /api/search ok count=${tracks.size}")
-                        call.respond(SearchResponse(tracks = tracks))
+                        val results = partySession.search(body.query)
+                        Log.i(TAG, "POST /api/search ok count=${results.size}")
+                        call.respond(SearchResponse(results = results))
                     } catch (error: Throwable) {
                         Log.e(TAG, "POST /api/search failed query='${body.query}'", error)
                         throw error
@@ -172,8 +172,8 @@ class PartyServer(
                 get("/api/artists/{artistId}/tracks") {
                     val artistId = call.parameters["artistId"].orEmpty()
                     Log.i(TAG, "GET /api/artists/$artistId/tracks")
-                    val tracks = partySession.artistTracks(artistId)
-                    call.respond(SearchResponse(tracks = tracks))
+                    val results = partySession.artistTracks(artistId)
+                    call.respond(SearchResponse(results = results))
                 }
                 get("/api/library") {
                     val query = call.request.queryParameters["q"].orEmpty()

@@ -33,10 +33,11 @@
 ## Search & playback
 
 - Search uses Tidal catalog OAuth (client credentials). Credentials live in `local.properties` and are compiled into `BuildConfig`.
-- Catalog search returns **tracks only**, with nested artist/album includes so artist names resolve correctly.
-- Guests can tap an artist on a search result to browse that artist's tracks.
+- Catalog search returns **merged song/video hits**: each result may include a track (`song`), a music video (`video`), or both, paired by normalized title + artist. Unmatched videos appear as video-only rows. See [SONG_VIDEO.md](SONG_VIDEO.md).
+- Guests can tap an artist on a search result to browse that artist's tracks and videos (same pairing).
 - Search failures are surfaced as toast-friendly errors; the client does not auto-retry — guests decide when to try again.
-- Playback prefers `MediaController.playFromUri` with Tidal track URIs, then falls back to `playFromSearch` with title/artist extras (the path proven via adb/`MEDIA_PLAY_FROM_SEARCH`).
+- Playback prefers `MediaController.playFromUri` with Tidal track or video URIs, then falls back to `playFromSearch` with title/artist extras (audio or video media focus).
+- Queue adds of videos use attribution `added video`; audio stays `added`. Song and video IDs are distinct, so both may be active in the queue.
 
 ## Karaoke library
 
@@ -45,9 +46,9 @@
 - A full uninstall or clearing app data removes both the Tidal login and the persisted party queue.
 - Redirect URI must be registered in the Tidal developer portal and match `http://<tv-lan-ip>:<port>/oauth/callback`.
 - After sign-in, the host picks one of their playlists as the karaoke library.
-- Guests open a full-screen Add Song modal that auto-loads the full karaoke library browse list (filter is optional; Enter submits the filter). "Search all Tidal" is the fallback for songs not in the library.
-- A heart on each queued track appends that track to the configured library playlist (`playlists.write`) and updates the shared "in library" set for everyone.
-- Library tracks are cached in TV memory and on disk after load / heart / playlist change, so cold starts and repeat opens skip re-paginating Tidal. Guests also keep a session cache of the last full library response for instant modal reopen.
+- Guests open a full-screen Add Song modal that auto-loads the full karaoke library browse list (filter is optional; Enter submits the filter). "Search all Tidal" is the fallback for songs not in the library; catalog rows offer **Song** and/or **Video** when a music video matches.
+- A heart on each queued track appends that track (or video) to the configured library playlist (`playlists.write`) and updates the shared "in library" set for everyone.
+- Library tracks are cached in TV memory and on disk after load / heart / playlist change, so cold starts and repeat opens skip re-paginating Tidal. Guests also keep a session cache of the last full library response for instant modal reopen. Playlist items that are already videos are shown with a Video add button.
 
 ## Lyrics
 

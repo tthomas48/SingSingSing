@@ -76,12 +76,12 @@ class PartySession(
         guest
     }
 
-    suspend fun search(query: String): List<TrackRef> {
-        return tidalCatalog.searchTracks(query)
+    suspend fun search(query: String): List<SearchHit> {
+        return tidalCatalog.search(query)
     }
 
-    suspend fun artistTracks(artistId: String): List<TrackRef> {
-        return tidalCatalog.getArtistTracks(artistId)
+    suspend fun artistTracks(artistId: String): List<SearchHit> {
+        return tidalCatalog.getArtistSearchHits(artistId)
     }
 
     suspend fun libraryTracks(query: String = ""): LibraryResponse {
@@ -114,7 +114,8 @@ class PartySession(
             addedByName = guest.name,
         )
         queue.add(item)
-        addMessageLocked("${guest.name} added ${track.title} by ${track.artist}")
+        val verb = if (track.isVideo) "added video" else "added"
+        addMessageLocked("${guest.name} $verb ${track.title} by ${track.artist}")
         val shouldStart = queue.nowPlaying() == null
         publishLocked()
         if (shouldStart) {
@@ -147,7 +148,7 @@ class PartySession(
                 error("Host hasn't set a karaoke library yet")
             }
         }
-        tidalCatalog.addTrackToLibrary(track.tidalTrackId)
+        tidalCatalog.addTrackToLibrary(track.tidalTrackId, track.mediaType)
         mutex.withLock {
             val guest = requireGuestLocked(guestId)
             val libraryName = tidalCatalog.libraryPlaylistName() ?: "library"
