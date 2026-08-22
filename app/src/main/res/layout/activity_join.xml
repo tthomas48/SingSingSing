@@ -67,6 +67,19 @@
         app:layout_constraintTop_toBottomOf="@id/urlLabel" />
 
     <TextView
+        android:id="@+id/wifiWarning"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/wifi_warning"
+        android:textColor="@color/warning"
+        android:textSize="18sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toStartOf="@+id/qrCode"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/joinUrl" />
+
+    <TextView
         android:id="@+id/bridgeStatus"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -76,7 +89,7 @@
         android:textSize="16sp"
         app:layout_constraintEnd_toStartOf="@+id/qrCode"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/joinUrl" />
+        app:layout_constraintTop_toBottomOf="@id/wifiWarning" />
 
     <Button
         android:id="@+id/openTidalButton"

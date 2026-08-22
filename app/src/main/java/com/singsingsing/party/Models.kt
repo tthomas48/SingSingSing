@@ -75,6 +75,16 @@ data class PartySnapshot(
 )
 
 @Serializable
+data class HealthResponse(
+    val ok: Boolean = true,
+    val port: Int,
+    val advertisedHost: String,
+    val wifiHost: String? = null,
+    val ethernetHost: String? = null,
+    val wifiAvailable: Boolean,
+)
+
+@Serializable
 data class JoinRequest(
     val name: String,
 )

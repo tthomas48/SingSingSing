@@ -6,6 +6,7 @@
     <color name="accent_dim">#1F8A5A</color>
     <color name="text_primary">#F4F7FB</color>
     <color name="text_secondary">#9DB0C7</color>
+    <color name="warning">#FFB020</color>
     <color name="qr_fg">#0B1220</color>
     <color name="qr_bg">#F4F7FB</color>
 </resources>

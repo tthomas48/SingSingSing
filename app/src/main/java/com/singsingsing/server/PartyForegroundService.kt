@@ -21,6 +21,8 @@ import com.singsingsing.SingAlongApp
 import com.singsingsing.bridge.BridgeQueueHolder
 import com.singsingsing.bridge.TidalMediaControllerBridge
 import com.singsingsing.bridge.TidalNotificationListenerService
+import com.singsingsing.net.LanMonitor
+import com.singsingsing.net.PartyLanState
 import com.singsingsing.ui.JoinActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,8 @@ class PartyForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var server: PartyServer? = null
     private var bridge: TidalMediaControllerBridge? = null
+    private var lanMonitor: LanMonitor? = null
+    private var lanWatchJob: Job? = null
     private var guestNotificationJob: Job? = null
     private var messageToastJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -58,11 +62,16 @@ class PartyForegroundService : Service() {
         }
 
         val app = SingAlongApp.instance
+        val monitor = LanMonitor(this)
+        monitor.start()
+        lanMonitor = monitor
+
         val partyServer = PartyServer(
             context = this,
             partySession = app.partySession,
             scope = serviceScope,
             port = BuildConfig.PARTY_PORT.toInt(),
+            lanState = { monitor.state.value },
         )
         partyServer.start()
         server = partyServer
@@ -80,9 +89,8 @@ class PartyForegroundService : Service() {
 
         watchForNewGuests()
         watchForNewMessages()
-        val joinUrl = partyServer.joinUrl()
-        updateNotification(joinUrl)
-        publishJoinUrl(joinUrl)
+        watchLan(monitor)
+        publishLan(monitor.state.value)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -92,11 +100,16 @@ class PartyForegroundService : Service() {
         guestNotificationJob = null
         messageToastJob?.cancel()
         messageToastJob = null
+        lanWatchJob?.cancel()
+        lanWatchJob = null
+        lanMonitor?.stop()
+        lanMonitor = null
         bridge?.stop()
         bridge = null
         server?.stop()
         server = null
         publishJoinUrl(null)
+        publishLanState(null)
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -143,6 +156,19 @@ class PartyForegroundService : Service() {
     private fun updateNotification(url: String) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, buildNotification(url))
+    }
+
+    private fun watchLan(monitor: LanMonitor) {
+        lanWatchJob = serviceScope.launch {
+            monitor.state.collectLatest(::publishLan)
+        }
+    }
+
+    private fun publishLan(state: PartyLanState) {
+        val url = state.joinUrl(BuildConfig.PARTY_PORT.toInt())
+        updateNotification(url)
+        publishJoinUrl(url)
+        publishLanState(state)
     }
 
     private fun watchForNewGuests() {
@@ -203,8 +229,15 @@ class PartyForegroundService : Service() {
         private val _joinUrl = MutableStateFlow<String?>(null)
         val joinUrl: StateFlow<String?> = _joinUrl.asStateFlow()
 
+        private val _lanState = MutableStateFlow<PartyLanState?>(null)
+        val lanState: StateFlow<PartyLanState?> = _lanState.asStateFlow()
+
         fun publishJoinUrl(url: String?) {
             _joinUrl.value = url
+        }
+
+        fun publishLanState(state: PartyLanState?) {
+            _lanState.value = state
         }
 
         fun start(context: Context) {

@@ -4,9 +4,12 @@ import android.content.Context
 import android.util.Log
 import com.singsingsing.SingAlongApp
 import com.singsingsing.bridge.BridgeQueueHolder
+import com.singsingsing.net.LanAddressPicker
+import com.singsingsing.net.PartyLanState
 import com.singsingsing.party.AddTrackRequest
 import com.singsingsing.party.FavoriteTrackRequest
 import com.singsingsing.party.GuestActionRequest
+import com.singsingsing.party.HealthResponse
 import com.singsingsing.party.JoinRequest
 import com.singsingsing.party.JoinResponse
 import com.singsingsing.party.PartySession
@@ -42,14 +45,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.net.Inet4Address
-import java.net.NetworkInterface
 
 class PartyServer(
     private val context: Context,
     private val partySession: PartySession,
     private val scope: CoroutineScope,
     private val port: Int,
+    private val lanState: () -> PartyLanState = { LanAddressPicker.snapshotFromNetworkInterfaces() },
 ) {
     private var engine: ApplicationEngine? = null
     private var broadcastJob: Job? = null
@@ -144,9 +146,16 @@ class PartyServer(
                     }
                 }
                 get("/api/health") {
-                    call.respondText(
-                        """{"ok":true,"port":$port}""",
-                        ContentType.Application.Json,
+                    val lan = lanState()
+                    call.respond(
+                        HealthResponse(
+                            ok = true,
+                            port = port,
+                            advertisedHost = lan.advertisedHost,
+                            wifiHost = lan.wifiHost,
+                            ethernetHost = lan.ethernetHost,
+                            wifiAvailable = lan.wifiAvailable,
+                        ),
                     )
                 }
                 get("/api/state") {
@@ -276,9 +285,9 @@ class PartyServer(
         engine = null
     }
 
-    fun joinUrl(): String = "http://${lanIp()}:$port/"
+    fun joinUrl(): String = lanState().joinUrl(port)
 
-    fun oauthCallbackUrl(): String = "http://${lanIp()}:$port/oauth/callback"
+    fun oauthCallbackUrl(): String = lanState().oauthCallbackUrl(port)
 
     private fun oauthResultHtml(title: String, body: String, ok: Boolean): String {
         val color = if (ok) "#3ddc97" else "#ff6b6b"
@@ -294,19 +303,6 @@ class PartyServer(
             </style></head>
             <body><main><h1>$title</h1><p>${body.replace("<", "&lt;")}</p></main></body></html>
         """.trimIndent()
-    }
-
-    private fun lanIp(): String {
-        val interfaces = NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
-        for (network in interfaces) {
-            if (!network.isUp || network.isLoopback) continue
-            for (address in network.inetAddresses) {
-                if (!address.isLoopbackAddress && address is Inet4Address) {
-                    return address.hostAddress ?: continue
-                }
-            }
-        }
-        return "127.0.0.1"
     }
 
     private fun assetText(path: String): String =

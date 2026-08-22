@@ -1,5 +1,13 @@
 # Business logic
 
+## Guest join LAN
+
+- The party HTTP server listens on every interface (`0.0.0.0`). The QR code and join URL advertise the **WiFi IPv4** whenever one exists, even if Ethernet is the default route (phones on WiFi often cannot reach the Ethernet address).
+- Ethernet is advertised only when WiFi has no usable IPv4. Loopback and link-local (`169.254.*`) addresses are never advertised.
+- Network changes republish the join URL and QR on the TV. Tidal OAuth redirect URIs use the same advertised host.
+- If the TV is not on WiFi, JoinActivity shows a warning that phones may not be able to join. The guest web page does not show this warning.
+- `GET /api/health` reports `advertisedHost`, `wifiHost`, `ethernetHost`, and `wifiAvailable` so LAN state can be checked without ADB.
+
 ## Party queue
 
 - The sing-along queue is owned by this app, not by Tidal's internal queue.

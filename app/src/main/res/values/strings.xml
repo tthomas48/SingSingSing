@@ -41,4 +41,5 @@
     <string name="bridge_status_ready">Tidal bridge ready</string>
     <string name="bridge_status_waiting">Waiting for Tidal playback…</string>
     <string name="bridge_status_missing_permission">Notification access required</string>
+    <string name="wifi_warning">This TV is not on Wi‑Fi. Phones on Wi‑Fi may not be able to join. Connect the Chromecast to Wi‑Fi (Ethernet-only often cannot reach phones).</string>
 </resources>

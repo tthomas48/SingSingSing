@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -29,6 +30,7 @@ import kotlinx.coroutines.launch
 
 class JoinActivity : AppCompatActivity() {
     private lateinit var joinUrlView: TextView
+    private lateinit var wifiWarningView: TextView
     private lateinit var bridgeStatusView: TextView
     private lateinit var qrView: ImageView
 
@@ -37,6 +39,7 @@ class JoinActivity : AppCompatActivity() {
         setContentView(R.layout.activity_join)
 
         joinUrlView = findViewById(R.id.joinUrl)
+        wifiWarningView = findViewById(R.id.wifiWarning)
         bridgeStatusView = findViewById(R.id.bridgeStatus)
         qrView = findViewById(R.id.qrCode)
 
@@ -56,6 +59,13 @@ class JoinActivity : AppCompatActivity() {
                 } else {
                     showJoinUrl(url)
                 }
+            }
+        }
+
+        lifecycleScope.launch {
+            PartyForegroundService.lanState.collectLatest { state ->
+                wifiWarningView.visibility =
+                    if (state != null && !state.wifiAvailable) View.VISIBLE else View.GONE
             }
         }
 
