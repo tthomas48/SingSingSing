@@ -1,6 +1,7 @@
 package com.singsingsing.tidal
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Test
 
@@ -12,14 +13,16 @@ class TidalCatalogClientTest {
             countryCode = "US",
         )
         val response = SearchApiResponse(
-            data = SearchData(
-                id = "wolf",
-                type = "searchResults",
-                relationships = ResourceRelationships(
-                    tracks = RelationshipList(
-                        listOf(
-                            RelationshipRef("95574931", "tracks"),
-                            RelationshipRef("2", "tracks"),
+            data = listOf(
+                SearchData(
+                    id = "wolf",
+                    type = "searchResults",
+                    relationships = ResourceRelationships(
+                        tracks = RelationshipList(
+                            listOf(
+                                RelationshipRef("95574931", "tracks"),
+                                RelationshipRef("2", "tracks"),
+                            ),
                         ),
                     ),
                 ),
@@ -129,17 +132,19 @@ class TidalCatalogClientTest {
             countryCode = "US",
         )
         val response = SearchApiResponse(
-            data = SearchData(
-                id = "wolf",
-                type = "searchResults",
-                relationships = ResourceRelationships(
-                    tracks = RelationshipList(
-                        listOf(RelationshipRef("95574931", "tracks")),
-                    ),
-                    videos = RelationshipList(
-                        listOf(
-                            RelationshipRef("v1", "videos"),
-                            RelationshipRef("v2", "videos"),
+            data = listOf(
+                SearchData(
+                    id = "wolf",
+                    type = "searchResults",
+                    relationships = ResourceRelationships(
+                        tracks = RelationshipList(
+                            listOf(RelationshipRef("95574931", "tracks")),
+                        ),
+                        videos = RelationshipList(
+                            listOf(
+                                RelationshipRef("v1", "videos"),
+                                RelationshipRef("v2", "videos"),
+                            ),
                         ),
                     ),
                 ),
@@ -247,5 +252,58 @@ class TidalCatalogClientTest {
         assertThat(attrs.durationSecondsOrZero()).isEqualTo(22 * 3600 + 24 * 60 + 41)
         assertThat(parseIso8601DurationSeconds("PT3M20S")).isEqualTo(200)
         assertThat(parseIso8601DurationSeconds("PT45S")).isEqualTo(45)
+    }
+
+    @Test
+    fun catalogSearchUsesQueryFilterNotPathId() {
+        assertThat(TidalCatalogClient.catalogSearchUrl())
+            .isEqualTo("https://openapi.tidal.com/v2/searchResults")
+        assertThat(TidalCatalogClient.SEARCH_QUERY_FILTER).isEqualTo("filter[query]")
+    }
+
+    @Test
+    fun searchApiResponseDecodesCollectionDocument() {
+        val decoded = Json.decodeFromString<SearchApiResponse>(
+            """
+            {
+              "data": [{
+                "id": "wolf",
+                "type": "searchResults",
+                "relationships": {
+                  "tracks": { "data": [{ "id": "95574931", "type": "tracks" }] }
+                }
+              }],
+              "included": [{
+                "id": "95574931",
+                "type": "tracks",
+                "attributes": { "title": "Wolf Like Me" },
+                "relationships": {
+                  "artists": { "data": [{ "id": "1", "type": "artists" }] }
+                }
+              }, {
+                "id": "1",
+                "type": "artists",
+                "attributes": { "name": "TV On The Radio" }
+              }]
+            }
+            """.trimIndent(),
+        )
+        val client = TidalCatalogClient(
+            authClient = TidalAuthClient("", ""),
+            countryCode = "US",
+        )
+        val tracks = client.parseSearch(decoded)
+        assertThat(tracks.map { it.tidalTrackId }).containsExactly("95574931")
+        assertThat(tracks[0].title).isEqualTo("Wolf Like Me")
+        assertThat(tracks[0].artist).isEqualTo("TV On The Radio")
+    }
+
+    @Test
+    fun parseSearchHitsEmptyCollectionReturnsNoHits() {
+        val client = TidalCatalogClient(
+            authClient = TidalAuthClient("", ""),
+            countryCode = "US",
+        )
+        assertThat(client.parseSearchHits(SearchApiResponse(data = emptyList()))).isEmpty()
     }
 }

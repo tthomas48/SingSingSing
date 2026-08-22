@@ -33,7 +33,7 @@
 ## Search & playback
 
 - Search uses Tidal catalog OAuth (client credentials). Credentials live in `local.properties` and are compiled into `BuildConfig`.
-- Catalog search returns **merged song/video hits**: each result may include a track (`song`), a music video (`video`), or both, paired by normalized title + artist. Unmatched videos appear as video-only rows. See [SONG_VIDEO.md](SONG_VIDEO.md).
+- Catalog search calls `GET /v2/searchResults?filter[query]=...` (Tidal no longer accepts the query as a `/searchResults/{query}` path id) and returns **merged song/video hits**: each result may include a track (`song`), a music video (`video`), or both, paired by normalized title + artist. Unmatched videos appear as video-only rows. See [SONG_VIDEO.md](SONG_VIDEO.md).
 - Guests can tap an artist on a search result to browse that artist's tracks and videos (same pairing).
 - Search failures are surfaced as toast-friendly errors; the client does not auto-retry — guests decide when to try again.
 - Playback for audio prefers `MediaController.playFromUri` with Tidal track URIs, then falls back to `playFromSearch`. Videos are launched with `ACTION_VIEW` on `https://tidal.com/browse/video/{id}` (not MediaController play-from-uri/search). See [SONG_VIDEO.md](SONG_VIDEO.md).

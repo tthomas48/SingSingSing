@@ -25,8 +25,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 class TidalCatalogClient(
     private val authClient: TidalAuthClient,
@@ -58,19 +56,18 @@ class TidalCatalogClient(
         }
 
         val token = authClient.accessToken()
-        val encoded = URLEncoder.encode(cleaned, StandardCharsets.UTF_8)
-            .replace("+", "%20")
-        val url = "$BASE_URL/searchResults/$encoded"
+        val url = catalogSearchUrl()
         Log.i(
             TidalApiLog.TAG,
-            "search query='$cleaned' encoded='$encoded' country=$countryCode limit=$limit tokenLen=${token.length}",
+            "search query='$cleaned' country=$countryCode limit=$limit tokenLen=${token.length}",
         )
         val response: SearchApiResponse = try {
             TidalApiLog.get(http, url) {
                 header(HttpHeaders.Authorization, "Bearer $token")
                 header(HttpHeaders.Accept, ACCEPT_JSON_API)
+                parameter(SEARCH_QUERY_FILTER, cleaned)
                 parameter("countryCode", countryCode)
-                parameter("include", "tracks.artists,tracks.albums,videos.artists,videos.thumbnailArt")
+                parameter("include", SEARCH_INCLUDE)
             }
         } catch (error: Throwable) {
             Log.e(TidalApiLog.TAG, "search failed for query='$cleaned'", error)
@@ -351,10 +348,11 @@ class TidalCatalogClient(
 
     internal fun parseSearchHits(response: SearchApiResponse): List<SearchHit> {
         val included = response.included.orEmpty()
-        val trackIdsInOrder = response.data?.relationships?.tracks?.data.orEmpty()
+        val result = response.primaryResult()
+        val trackIdsInOrder = result?.relationships?.tracks?.data.orEmpty()
             .filter { it.type == "tracks" }
             .map { it.id }
-        val videoIdsInOrder = response.data?.relationships?.videos?.data.orEmpty()
+        val videoIdsInOrder = result?.relationships?.videos?.data.orEmpty()
             .filter { it.type == "videos" }
             .map { it.id }
         val tracksById = mapIncludedMedia(included, type = "tracks", mediaType = MEDIA_TYPE_TRACK)
@@ -446,6 +444,11 @@ class TidalCatalogClient(
     companion object {
         const val BASE_URL = "https://openapi.tidal.com/v2"
         const val ACCEPT_JSON_API = "application/vnd.api+json"
+        /** Tidal now searches via a collection filter; the query is not a resource path id. */
+        const val SEARCH_QUERY_FILTER = "filter[query]"
+        const val SEARCH_INCLUDE = "tracks.artists,tracks.albums,videos.artists,videos.thumbnailArt"
+
+        fun catalogSearchUrl(): String = "$BASE_URL/searchResults"
 
         fun defaultHttpClient(): HttpClient = HttpClient(CIO) {
             expectSuccess = false
@@ -482,9 +485,11 @@ private fun ApiLinks.nextCursor(): String? {
 
 @Serializable
 data class SearchApiResponse(
-    val data: SearchData? = null,
+    val data: List<SearchData>? = null,
     val included: List<IncludedResource>? = null,
-)
+) {
+    fun primaryResult(): SearchData? = data?.firstOrNull()
+}
 
 @Serializable
 data class SearchData(
