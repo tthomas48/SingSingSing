@@ -70,6 +70,8 @@ The Karaoke library is a playlist in Tidal that saves your most commonly sung so
 - Browse the karaoke library playlist / search all Tidal
 - Add the audio song or the music video from merged search results
 - Add songs to the shared queue with attribution messages
+- Add 5 random songs from the karaoke library (skips songs already queued; spreads across artists)
+- Swipe through random library songs to add (right) or skip (left)
 - Play / pause / skip / previous / reorder / jump-to-track
 - Heart a queued track into the karaoke library playlist
 - Open lyrics on the TV; tap the lyrics icon next to now-playing for live synced lyrics on the phone (LRCLIB)

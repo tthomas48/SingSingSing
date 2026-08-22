@@ -478,6 +478,69 @@ button.secondary { background: var(--accent-dim); color: var(--text); }
   overscroll-behavior: contain;
   padding-bottom: 12px;
 }
+.add-modal-sheet .results.pick-results {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.library-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.library-actions button {
+  flex: 1;
+  font-size: 0.9rem;
+  padding: 10px 12px;
+}
+
+.pick-deck {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+}
+.pick-hint { margin: 0; }
+.pick-card {
+  flex: 1;
+  min-height: 14rem;
+  position: relative;
+  overflow: hidden;
+  background-color: #101b2d;
+  background-size: cover;
+  background-position: center;
+  border-radius: 18px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  border: 2px solid transparent;
+}
+.pick-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(11, 18, 32, 0.94) 0%, rgba(11, 18, 32, 0.3) 55%, rgba(11, 18, 32, 0.15) 100%);
+  pointer-events: none;
+}
+.pick-card > * {
+  position: relative;
+  z-index: 1;
+}
+.pick-card.pick-add { border-color: var(--accent); }
+.pick-card.pick-skip { border-color: var(--danger); }
+.pick-card strong { font-size: 1.25rem; }
+.pick-actions {
+  display: flex;
+  gap: 10px;
+}
+.pick-actions button { flex: 1; }
 .add-busy-bar {
   height: 3px;
   margin: 4px 0 10px;

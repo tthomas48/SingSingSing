@@ -18,7 +18,7 @@ Sing Sing Sing is an all-in-one Android TV app that hosts a Jackbox-style party 
 
 1. Guests join `http://<tv-wifi-ip>:8787`, enter a name, and open the Add Song modal. The QR / join URL prefers the TV's WiFi IPv4; Ethernet is advertised only when WiFi has no usable address.
 2. Library browse filters the host-selected Tidal playlist; full catalog search uses the app token and returns paired song/video hits.
-3. Adding a track or video updates our party queue and asks the bridge to start that item on Tidal when nothing is playing.
+3. Adding a track or video (including swipe-to-pick) updates our party queue and asks the bridge to start that item on Tidal when nothing is playing. **Add 5 random** is a single `POST /api/queue/random` that appends an artist-diverse sample from the karaoke library.
 4. Transport controls, reorder, jump-to-track, and auto-advance keep our queue authoritative.
 5. Hearting a queued item appends that track or video to the library playlist via the user token.
 6. Live state is pushed to phones over WebSocket.

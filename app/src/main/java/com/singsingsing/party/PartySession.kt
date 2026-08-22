@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
+import kotlin.random.Random
 
 class PartySession(
     private val tidalCatalog: TidalCatalogClient,
@@ -124,6 +125,56 @@ class PartySession(
             startNextLocked()
         }
         item
+    }
+
+    suspend fun addRandomFromLibrary(
+        guestId: String,
+        count: Int = LibraryRandom.DEFAULT_COUNT,
+        random: Random = Random.Default,
+    ): List<QueueItem> {
+        if (!tidalCatalog.isLibraryConfigured()) {
+            error("Host hasn't set a karaoke library yet")
+        }
+        val tracks = tidalCatalog.getLibraryTracks()
+        return addRandomTracks(guestId, tracks, count, random)
+    }
+
+    suspend fun addRandomTracks(
+        guestId: String,
+        libraryTracks: List<TrackRef>,
+        count: Int = LibraryRandom.DEFAULT_COUNT,
+        random: Random = Random.Default,
+    ): List<QueueItem> = mutex.withLock {
+        val guest = guests[guestId] ?: error("Unknown guest")
+        val excludeIds = buildSet {
+            queue.nowPlaying()?.track?.tidalTrackId?.let { add(it) }
+            queue.snapshotQueue().forEach { add(it.track.tidalTrackId) }
+        }
+        val chosen = LibraryRandom.selectRandomLibraryTracks(
+            tracks = libraryTracks,
+            excludeIds = excludeIds,
+            count = count,
+            random = random,
+        )
+        if (chosen.isEmpty()) {
+            error("No library songs left to add")
+        }
+        val shouldStart = queue.nowPlaying() == null
+        val items = chosen.map { track ->
+            QueueItem(
+                id = UUID.randomUUID().toString(),
+                track = track,
+                addedByGuestId = guest.id,
+                addedByName = guest.name,
+            ).also(queue::add)
+        }
+        val noun = if (items.size == 1) "song" else "songs"
+        addMessageLocked("${guest.name} added ${items.size} random $noun from the library")
+        publishLocked()
+        if (shouldStart) {
+            startNextLocked()
+        }
+        items
     }
 
     suspend fun reorderQueue(guestId: String, itemId: String, toIndex: Int) = mutex.withLock {

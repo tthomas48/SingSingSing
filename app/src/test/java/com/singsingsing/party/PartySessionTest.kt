@@ -624,4 +624,93 @@ class PartySessionTest {
         assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("2")
         assertThat(party.snapshot.value.nowPlaying.isPlaying).isTrue()
     }
+
+    @Test
+    fun addRandomTracksStartsPlaybackWhenIdleWithSingleMessage() = runTest {
+        val (party, bridge) = session()
+        val guest = party.join("Tim")
+        val library = listOf(
+            TrackRef("1", "One", "Alpha"),
+            TrackRef("2", "Two", "Beta"),
+            TrackRef("3", "Three", "Gamma"),
+            TrackRef("4", "Four", "Delta"),
+            TrackRef("5", "Five", "Epsilon"),
+        )
+
+        val added = party.addRandomTracks(guest.id, library, count = 5, random = kotlin.random.Random(1))
+
+        assertThat(added).hasSize(5)
+        assertThat(bridge.played).hasSize(1)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo(added[0].track.tidalTrackId)
+        assertThat(party.snapshot.value.queue).hasSize(4)
+        val randomMessages = party.snapshot.value.messages.filter {
+            it.text.contains("random")
+        }
+        assertThat(randomMessages).hasSize(1)
+        assertThat(randomMessages[0].text).isEqualTo("Tim added 5 random songs from the library")
+    }
+
+    @Test
+    fun addRandomTracksSkipsAlreadyQueuedAndWaitsWhenPlaying() = runTest {
+        val (party, bridge) = session()
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "Alpha"))
+        val library = listOf(
+            TrackRef("1", "One", "Alpha"),
+            TrackRef("2", "Two", "Beta"),
+            TrackRef("3", "Three", "Gamma"),
+        )
+
+        val added = party.addRandomTracks(guest.id, library, count = 5, random = kotlin.random.Random(2))
+
+        assertThat(added.map { it.track.tidalTrackId }).containsExactly("2", "3")
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1")
+        assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId }).containsExactly("2", "3")
+    }
+
+    @Test
+    fun addRandomTracksErrorsWhenNothingLeft() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A"))
+        try {
+            party.addRandomTracks(guest.id, listOf(TrackRef("1", "One", "A")), count = 5)
+            throw AssertionError("expected empty random add to fail")
+        } catch (error: IllegalStateException) {
+            assertThat(error).hasMessageThat().contains("No library songs left to add")
+        }
+    }
+
+    @Test
+    fun addRandomFromLibraryErrorsWhenLibraryNotConfigured() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Ada")
+        try {
+            party.addRandomFromLibrary(guest.id, count = 5)
+            throw AssertionError("expected missing library to fail")
+        } catch (error: IllegalStateException) {
+            assertThat(error).hasMessageThat().contains("Host hasn't set a karaoke library yet")
+        }
+    }
+
+    @Test
+    fun addRandomTracksRejectsUnknownGuest() = runTest {
+        val (party, _) = session()
+        try {
+            party.addRandomTracks("missing", listOf(TrackRef("1", "One", "A")), count = 1)
+            throw AssertionError("expected unknown guest to fail")
+        } catch (error: IllegalStateException) {
+            assertThat(error).hasMessageThat().contains("Unknown guest")
+        }
+    }
+
+    @Test
+    fun addRandomTracksSingularMessageForOneSong() = runTest {
+        val (party, _) = session()
+        val guest = party.join("Bo")
+        party.addRandomTracks(guest.id, listOf(TrackRef("9", "Solo", "One Artist")), count = 5)
+        assertThat(
+            party.snapshot.value.messages.any { it.text == "Bo added 1 random song from the library" },
+        ).isTrue()
+    }
 }

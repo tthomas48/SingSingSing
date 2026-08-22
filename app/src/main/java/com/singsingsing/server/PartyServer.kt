@@ -6,6 +6,8 @@ import com.singsingsing.SingAlongApp
 import com.singsingsing.bridge.BridgeQueueHolder
 import com.singsingsing.net.LanAddressPicker
 import com.singsingsing.net.PartyLanState
+import com.singsingsing.party.AddRandomTracksRequest
+import com.singsingsing.party.AddRandomTracksResponse
 import com.singsingsing.party.AddTrackRequest
 import com.singsingsing.party.FavoriteTrackRequest
 import com.singsingsing.party.GuestActionRequest
@@ -197,6 +199,11 @@ class PartyServer(
                     val body = call.receive<AddTrackRequest>()
                     val item = partySession.addTrack(body.guestId, body.track)
                     call.respond(item)
+                }
+                post("/api/queue/random") {
+                    val body = call.receive<AddRandomTracksRequest>()
+                    val items = partySession.addRandomFromLibrary(body.guestId, body.count)
+                    call.respond(AddRandomTracksResponse(items = items))
                 }
                 post("/api/queue/reorder") {
                     val body = call.receive<ReorderQueueRequest>()

@@ -102,6 +102,17 @@ data class AddTrackRequest(
 )
 
 @Serializable
+data class AddRandomTracksRequest(
+    val guestId: String,
+    val count: Int = LibraryRandom.DEFAULT_COUNT,
+)
+
+@Serializable
+data class AddRandomTracksResponse(
+    val items: List<QueueItem>,
+)
+
+@Serializable
 data class GuestActionRequest(
     val guestId: String,
 )

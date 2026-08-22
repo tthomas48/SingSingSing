@@ -30,7 +30,7 @@
 
 ## Attribution
 
-- Every queue add produces a party message: "`{name} added {title} by {artist}`".
+- Every queue add produces a party message: "`{name} added {title} by {artist}`". A random library batch is one exception: a single "`{name} added N random song(s) from the library`" line instead of N individual adds.
 - Join / skip / previous / reorder / jump / heart also emit short fun messages for the chatter feed.
 - Guests can post their own chatter from a compose box; user messages use the same narrative attribution: "`{name} says {text}`" (trimmed, capped at 120 chars, blank rejected).
 - The guest UI splits Queue and Chatter into tabs; the chatter tab uses a fixed-height viewport (~5–8 lines) like the queue, with the compose box above it.
@@ -55,7 +55,9 @@
 - A full uninstall or clearing app data removes both the Tidal login and the persisted party queue.
 - Redirect URI must be registered in the Tidal developer portal and match `http://<tv-lan-ip>:<port>/oauth/callback`.
 - After sign-in, the host picks one of their playlists as the karaoke library.
-- Guests open a full-screen Add Song modal that auto-loads the full karaoke library browse list (filter is optional; Enter submits the filter). "Search all Tidal" is the fallback for songs not in the library; catalog rows offer **Song** and/or **Video** when a music video matches.
+- Guests open a full-screen Add Song modal that auto-loads the full karaoke library browse list (filter is optional; Enter submits the filter). The Library tab also offers **Add 5 random** and **Swipe to pick**. "Search all Tidal" is the fallback for songs not in the library; catalog rows offer **Song** and/or **Video** when a music video matches.
+- **Add 5 random** asks the TV to append up to five karaoke-library tracks that are not already now playing or Up next. Selection shuffles, then takes at most one song per artist (case-insensitive trimmed name; collabs are not split). If the library has fewer distinct artists than five, leftover eligible tracks fill the rest — so a one-artist library can still get five songs, but a mixed library will not dump five from the same artist. The batch is one queue mutation with a single chatter line (`{name} added 5 random songs from the library`). If the queue was idle, the first picked track starts.
+- **Swipe to pick** stays in the same Add Song modal: library filter hides and a card deck of shuffled remaining library tracks appears (artwork, title, artist). Swipe right or **Add** queues that song (same `POST /api/queue` as browse); swipe left or **Skip** drops it for this pick session. **Shuffle again** restocks including previously skipped songs but still excludes the active queue. Skip/Add buttons are there for mice and accessibility. The party screen stays a single **Add a song** button.
 - A heart on now-playing, up-next, **and already-sung** queue rows appends that track (or video) to the configured library playlist (`playlists.write`) and updates the shared "in library" set for everyone.
 - Hearting succeeds as soon as Tidal accepts the playlist add (or reports the item is already there). A failed playlist reload after that does not show an error or wipe the on-TV library cache; the new id is kept so hearts stay filled.
 - Library tracks are cached in TV memory and on disk after load / heart / playlist change, so cold starts and repeat opens skip re-paginating Tidal. Guests also keep a session cache of the last full library response for instant modal reopen. Playlist items that are already videos are shown with a Video add button.

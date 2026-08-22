@@ -10,6 +10,10 @@ const state = {
   addBusyCount: 0,
   queueScrollReady: false,
   artistBrowse: null,
+  pickMode: false,
+  pickDeck: [],
+  pickSkipped: new Set(),
+  pickBusy: false,
   lyrics: {
     open: false,
     loading: false,
@@ -35,6 +39,9 @@ const els = {
   libraryForm: document.getElementById("libraryForm"),
   libraryInput: document.getElementById("libraryInput"),
   libraryHint: document.getElementById("libraryHint"),
+  libraryActions: document.getElementById("libraryActions"),
+  addRandomBtn: document.getElementById("addRandomBtn"),
+  swipePickBtn: document.getElementById("swipePickBtn"),
   searchForm: document.getElementById("searchForm"),
   searchInput: document.getElementById("searchInput"),
   searchResults: document.getElementById("searchResults"),
@@ -166,6 +173,7 @@ function closeModal() {
     els.addBusyBar.classList.add("hidden");
     els.addBusyBar.setAttribute("aria-hidden", "true");
   }
+  exitPickMode({ restoreList: false });
 }
 
 function stopLyricsClock() {
@@ -371,14 +379,29 @@ function closeLyricsModal() {
 }
 
 function setAddTab(tab) {
+  if (tab !== "library") {
+    exitPickMode({ restoreList: false });
+  }
   state.addTab = tab;
   document.querySelectorAll(".tab").forEach((btn) => {
     const active = btn.getAttribute("data-tab") === tab;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-selected", active ? "true" : "false");
   });
-  els.libraryForm.classList.toggle("hidden", tab !== "library");
-  els.searchForm.classList.toggle("hidden", tab !== "tidal");
+  syncAddChrome();
+}
+
+function syncAddChrome() {
+  const libraryTab = state.addTab === "library";
+  els.libraryForm.classList.toggle("hidden", !libraryTab || state.pickMode);
+  els.searchForm.classList.toggle("hidden", state.addTab !== "tidal");
+  if (els.libraryActions) {
+    const showActions = libraryTab && !state.pickMode && !!state.snapshot?.libraryConfigured;
+    els.libraryActions.classList.toggle("hidden", !showActions);
+  }
+  if (els.searchResults) {
+    els.searchResults.classList.toggle("pick-results", !!state.pickMode);
+  }
 }
 
 function setFeedTab(tab) {
@@ -574,6 +597,7 @@ function renderSnapshot(snapshot) {
   els.libraryHint.textContent = snapshot.libraryConfigured
     ? `Browsing ${snapshot.libraryPlaylistName || "your karaoke playlist"}`
     : "Host hasn’t set a karaoke library yet — use Search all Tidal, or configure one in TV Settings.";
+  syncAddChrome();
   syncLyricsFromSnapshot(snapshot);
 }
 
@@ -692,6 +716,15 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function addTrackToQueue(track) {
+  return withGuest((guest) =>
+    api("/api/queue", {
+      method: "POST",
+      body: JSON.stringify({ guestId: guest.id, track }),
+    }),
+  );
+}
+
 function bindAddTrackButton(button, track, queuedIds) {
   if (!button || !track?.tidalTrackId) return;
   if (queuedIds.has(track.tidalTrackId)) return;
@@ -701,12 +734,7 @@ function bindAddTrackButton(button, track, queuedIds) {
     button.setAttribute("aria-busy", "true");
     setAddBusy(true);
     try {
-      await withGuest((guest) =>
-        api("/api/queue", {
-          method: "POST",
-          body: JSON.stringify({ guestId: guest.id, track }),
-        }),
-      );
+      await addTrackToQueue(track);
       markAddButtonAdded(button);
       queuedIds.add(track.tidalTrackId);
       const label = track.mediaType === "video" ? `Queued video ${track.title}` : `Queued ${track.title}`;
@@ -842,7 +870,7 @@ async function loadLibrary(query = "") {
   const cleaned = String(query || "").trim();
   console.log("[library] load", { query: cleaned });
   const canUseGuestCache = !cleaned && state.libraryCache?.configured && Array.isArray(state.libraryCache.tracks);
-  if (!canUseGuestCache) {
+  if (!canUseGuestCache && !state.pickMode) {
     showSearchLoading(cleaned ? "Filtering library…" : "Loading karaoke library…");
   }
   setAddBusy(true);
@@ -856,6 +884,7 @@ async function loadLibrary(query = "") {
     });
     if (!payload.configured) {
       state.libraryCache = null;
+      if (state.pickMode) exitPickMode({ restoreList: false });
       els.searchResults.innerHTML = `<div class="result"><span>No karaoke library configured on the TV yet.</span></div>`;
       return;
     }
@@ -866,14 +895,262 @@ async function loadLibrary(query = "") {
         tracks: payload.tracks || [],
       };
     }
+    if (state.pickMode) return;
     renderSearchResults(payload.tracks || []);
   } catch (error) {
     console.error("[library] failed", error);
     showToast(error.message);
-    if (!canUseGuestCache) {
+    if (!canUseGuestCache && !state.pickMode) {
       els.searchResults.innerHTML = `<div class="result"><span>Could not load library.</span></div>`;
     }
   } finally {
+    setAddBusy(false);
+  }
+}
+
+function shuffleTracks(tracks) {
+  const copy = tracks.slice();
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = copy[i];
+    copy[i] = copy[j];
+    copy[j] = tmp;
+  }
+  return copy;
+}
+
+function eligiblePickTracks({ includeSkipped = false } = {}) {
+  const queued = activeQueuedTrackIds(state.snapshot);
+  const skipped = includeSkipped ? new Set() : state.pickSkipped;
+  return (state.libraryCache?.tracks || []).filter((track) => {
+    const id = track?.tidalTrackId;
+    if (!id || queued.has(id)) return false;
+    if (skipped.has(id)) return false;
+    return true;
+  });
+}
+
+function exitPickMode({ restoreList = true } = {}) {
+  const wasPicking = state.pickMode;
+  state.pickMode = false;
+  state.pickDeck = [];
+  state.pickSkipped = new Set();
+  state.pickBusy = false;
+  syncAddChrome();
+  if (wasPicking && restoreList && state.addTab === "library") {
+    const tracks = els.libraryInput.value.trim()
+      ? null
+      : state.libraryCache?.tracks;
+    if (Array.isArray(tracks)) {
+      renderSearchResults(tracks);
+    } else {
+      loadLibrary(els.libraryInput.value);
+    }
+  }
+}
+
+function startPickDeck({ reshuffle = false } = {}) {
+  if (reshuffle) state.pickSkipped = new Set();
+  const pool = eligiblePickTracks({ includeSkipped: reshuffle });
+  state.pickDeck = shuffleTracks(pool);
+  renderPickView();
+}
+
+async function enterPickMode() {
+  if (!state.snapshot?.libraryConfigured) {
+    showToast("Host hasn't set a karaoke library yet");
+    return;
+  }
+  state.pickMode = true;
+  state.pickSkipped = new Set();
+  state.pickBusy = false;
+  syncAddChrome();
+  if (!state.libraryCache?.tracks) {
+    await loadLibrary("");
+  }
+  if (!state.pickMode) return;
+  if (!state.libraryCache?.tracks?.length) {
+    exitPickMode({ restoreList: true });
+    showToast("No karaoke library songs to pick from");
+    return;
+  }
+  startPickDeck();
+}
+
+function renderPickView() {
+  const queued = activeQueuedTrackIds(state.snapshot);
+  while (state.pickDeck.length && queued.has(state.pickDeck[0]?.tidalTrackId)) {
+    state.pickDeck.shift();
+  }
+  const track = state.pickDeck[0];
+  els.searchResults.innerHTML = "";
+
+  const deck = document.createElement("div");
+  deck.className = "pick-deck";
+
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "link-btn";
+  back.textContent = "← Back to library";
+  back.addEventListener("click", () => exitPickMode({ restoreList: true }));
+  deck.appendChild(back);
+
+  if (!track) {
+    const allQueued = eligiblePickTracks({ includeSkipped: true }).length === 0;
+    const empty = document.createElement("div");
+    empty.className = "result";
+    empty.innerHTML = `<span>${allQueued
+      ? "All library songs are already in the queue."
+      : "That’s all for now."}</span>`;
+    deck.appendChild(empty);
+    if (!allQueued) {
+      const again = document.createElement("button");
+      again.type = "button";
+      again.className = "secondary";
+      again.textContent = "Shuffle again";
+      again.addEventListener("click", () => startPickDeck({ reshuffle: true }));
+      deck.appendChild(again);
+    }
+    els.searchResults.appendChild(deck);
+    return;
+  }
+
+  const hint = document.createElement("p");
+  hint.className = "muted tiny pick-hint";
+  hint.textContent = "Swipe right to add · left to skip";
+  deck.appendChild(hint);
+
+  const card = document.createElement("div");
+  card.className = "pick-card";
+  card.setAttribute("role", "img");
+  card.setAttribute("aria-label", `${track.title} by ${track.artist}`);
+  if (track.artworkUrl) {
+    card.style.backgroundImage = `url("${String(track.artworkUrl).replaceAll('"', "")}")`;
+  }
+  const videoBadge = track.mediaType === "video" ? '<span class="media-badge">Video</span>' : "";
+  card.innerHTML = `
+    <strong>${escapeHtml(track.title)}${videoBadge}</strong>
+    <span class="muted">${escapeHtml(track.artist) || "Unknown artist"}</span>
+  `;
+  bindPickSwipe(card, track);
+  deck.appendChild(card);
+
+  const actions = document.createElement("div");
+  actions.className = "pick-actions";
+  actions.innerHTML = `
+    <button type="button" class="secondary" data-pick-skip>Skip</button>
+    <button type="button" data-pick-add>Add</button>
+  `;
+  actions.querySelector("[data-pick-skip]").addEventListener("click", () => commitPick("skip", track));
+  actions.querySelector("[data-pick-add]").addEventListener("click", () => commitPick("add", track));
+  deck.appendChild(actions);
+
+  els.searchResults.appendChild(deck);
+}
+
+function bindPickSwipe(card, track) {
+  let startX = 0;
+  let dragging = false;
+  const threshold = 72;
+
+  const reset = () => {
+    card.style.transform = "";
+    card.classList.remove("pick-add", "pick-skip");
+  };
+
+  card.addEventListener("pointerdown", (event) => {
+    if (event.button && event.button !== 0) return;
+    dragging = true;
+    startX = event.clientX;
+    card.setPointerCapture(event.pointerId);
+  });
+  card.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const dx = event.clientX - startX;
+    card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
+    card.classList.toggle("pick-add", dx > 40);
+    card.classList.toggle("pick-skip", dx < -40);
+  });
+  card.addEventListener("pointerup", (event) => {
+    if (!dragging) return;
+    dragging = false;
+    const dx = event.clientX - startX;
+    if (dx > threshold) {
+      commitPick("add", track);
+    } else if (dx < -threshold) {
+      commitPick("skip", track);
+    } else {
+      reset();
+    }
+  });
+  card.addEventListener("pointercancel", () => {
+    dragging = false;
+    reset();
+  });
+}
+
+async function commitPick(action, track) {
+  if (!state.pickMode || state.pickBusy) return;
+  if (!track?.tidalTrackId) return;
+  if (action === "skip") {
+    state.pickSkipped.add(track.tidalTrackId);
+    if (state.pickDeck[0]?.tidalTrackId === track.tidalTrackId) {
+      state.pickDeck.shift();
+    }
+    renderPickView();
+    return;
+  }
+
+  state.pickBusy = true;
+  setAddBusy(true);
+  try {
+    await addTrackToQueue(track);
+    const label = track.mediaType === "video" ? `Queued video ${track.title}` : `Queued ${track.title}`;
+    showToast(label, { ok: true });
+    if (state.pickDeck[0]?.tidalTrackId === track.tidalTrackId) {
+      state.pickDeck.shift();
+    }
+    renderPickView();
+  } catch (error) {
+    showToast(error.message);
+    if (String(error.message || "").includes("Already in the queue")) {
+      if (state.pickDeck[0]?.tidalTrackId === track.tidalTrackId) {
+        state.pickDeck.shift();
+      }
+      renderPickView();
+    }
+  } finally {
+    state.pickBusy = false;
+    setAddBusy(false);
+  }
+}
+
+async function addFiveRandom() {
+  if (!state.snapshot?.libraryConfigured) {
+    showToast("Host hasn't set a karaoke library yet");
+    return;
+  }
+  setAddBusy(true);
+  if (els.addRandomBtn) els.addRandomBtn.disabled = true;
+  try {
+    const payload = await withGuest((guest) =>
+      api("/api/queue/random", {
+        method: "POST",
+        body: JSON.stringify({ guestId: guest.id, count: 5 }),
+      }),
+    );
+    const n = (payload.items || []).length;
+    showToast(n === 1 ? "Queued 1 random song" : `Queued ${n} random songs`, { ok: true });
+    if (!state.pickMode && state.addTab === "library") {
+      const tracks = els.libraryInput.value.trim()
+        ? null
+        : state.libraryCache?.tracks;
+      if (Array.isArray(tracks)) renderSearchResults(tracks);
+    }
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    if (els.addRandomBtn) els.addRandomBtn.disabled = false;
     setAddBusy(false);
   }
 }
@@ -895,6 +1172,8 @@ els.joinForm.addEventListener("submit", async (event) => {
 });
 
 els.openAddModal.addEventListener("click", openModal);
+if (els.addRandomBtn) els.addRandomBtn.addEventListener("click", addFiveRandom);
+if (els.swipePickBtn) els.swipePickBtn.addEventListener("click", () => enterPickMode());
 els.addModal.querySelectorAll("[data-close-modal]").forEach((el) => {
   el.addEventListener("click", closeModal);
 });
@@ -903,6 +1182,7 @@ document.querySelectorAll(".tab").forEach((btn) => {
     const tab = btn.getAttribute("data-tab");
     setAddTab(tab);
     if (tab === "library") {
+      if (state.pickMode) return;
       const query = els.libraryInput.value;
       if (!query.trim() && state.libraryCache?.configured && Array.isArray(state.libraryCache.tracks)) {
         renderSearchResults(state.libraryCache.tracks);
