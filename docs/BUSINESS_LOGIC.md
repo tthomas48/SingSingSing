@@ -13,8 +13,8 @@
 - Reorder moves an upcoming item within "Up next" only, via per-item up/down buttons (up on the left, down at the far right after heart/play).
 - Jump-to-track sets the playhead to any session item without discarding others.
 - When the current track is within ~2.5s of its end and something is up next, we **proactively** start the next party track (pause first) so Tidal autoplay does not win the race.
-- While launching a party track, brief foreign MediaSession metadata is ignored.
-- Stale MediaSession events whose track ID is already in history (already sung) are ignored so they cannot overwrite position or trigger a second skip.
+- While launching a party track, brief foreign MediaSession metadata is ignored. Videos get a longer launch window than audio so Tidal’s player can start.
+- Stale MediaSession events whose track ID is already in history (already sung) are ignored so they cannot overwrite position or trigger a second skip. Leftover audio from the previous song therefore cannot auto-skip a video that is still starting.
 - Near-end advance only runs when the MediaSession track ID matches the party now-playing track.
 - If Tidal still switches to a different track ID afterward (not one we already finished), we pause. When something is Up next we reclaim with that party track; when Up next is empty we stay paused so Tidal play-next/radio cannot keep playing (we do not call Tidal's skip-to-next / radio).
 - Guest UI shows history + up next in a fixed-height viewport with the next track pinned at the top; scroll up for already-sung (dimmed) songs. Auto-scroll to that next track only when the now-playing song changes (not on position ticks).
@@ -37,7 +37,7 @@
 - Guests can tap an artist on a search result to browse that artist's tracks and videos (same pairing).
 - Search failures are surfaced as toast-friendly errors; the client does not auto-retry — guests decide when to try again.
 - Playback for audio prefers `MediaController.playFromUri` with Tidal track URIs, then falls back to `playFromSearch`. Videos are launched with `ACTION_VIEW` on `https://tidal.com/browse/video/{id}` (not MediaController play-from-uri/search). See [SONG_VIDEO.md](SONG_VIDEO.md).
-- When a queued video is now-playing, MediaSession media ids that differ from the catalog video id are still treated as owned if title/artist match — otherwise foreign reclaim would pause a few seconds into the video.
+- When a queued track (audio or video) is now-playing, MediaSession media ids that differ from the catalog id are still treated as owned if title/artist match — otherwise foreign reclaim would skip a few seconds into the song. Catalog vs session ids are compared after stripping URI prefixes and country suffixes (`73416054-US`).
 - Queue adds of videos use attribution `added video`; audio stays `added`. Song and video IDs are distinct, so both may be active in the queue.
 
 ## Karaoke library
@@ -48,7 +48,8 @@
 - Redirect URI must be registered in the Tidal developer portal and match `http://<tv-lan-ip>:<port>/oauth/callback`.
 - After sign-in, the host picks one of their playlists as the karaoke library.
 - Guests open a full-screen Add Song modal that auto-loads the full karaoke library browse list (filter is optional; Enter submits the filter). "Search all Tidal" is the fallback for songs not in the library; catalog rows offer **Song** and/or **Video** when a music video matches.
-- A heart on each queued track appends that track (or video) to the configured library playlist (`playlists.write`) and updates the shared "in library" set for everyone.
+- A heart on now-playing, up-next, **and already-sung** queue rows appends that track (or video) to the configured library playlist (`playlists.write`) and updates the shared "in library" set for everyone.
+- Hearting succeeds as soon as Tidal accepts the playlist add (or reports the item is already there). A failed playlist reload after that does not show an error or wipe the on-TV library cache; the new id is kept so hearts stay filled.
 - Library tracks are cached in TV memory and on disk after load / heart / playlist change, so cold starts and repeat opens skip re-paginating Tidal. Guests also keep a session cache of the last full library response for instant modal reopen. Playlist items that are already videos are shown with a Video add button.
 
 ## Lyrics

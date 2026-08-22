@@ -49,11 +49,12 @@ adb shell am start -a android.intent.action.VIEW -d "https://tidal.com/browse/vi
 
 `TidalMediaControllerBridge.playTrack` for `mediaType == video`:
 
-1. Ensures Tidal is alive
+1. Pauses current audio (does **not** open Tidal’s TV home launcher first — that races the video player)
 2. `Intent.ACTION_VIEW` → `https://tidal.com/browse/video/{id}` (package `com.aspiro.tidal`), then optional `tidal://video/{id}`
-3. Re-attaches the MediaController after a short delay
-4. Does **not** fall back to `playFromUri` / `playFromSearch` (those start audio)
+3. Waits for MediaSession metadata to match (id, title, or normalized “Official Video” title); retries the VIEW once if it does not
+4. Returns false if it never matches so the party can say “Could not start …” instead of advancing the queue
+5. Does **not** fall back to `playFromUri` / `playFromSearch` (those start audio)
 
 Audio tracks still use `playFromUri` then `playFromSearch`.
 
-After a video is playing, pause/skip/position still go through MediaController. Tidal’s MediaSession media id often differs from the catalog video id; party reclaim treats a queued video as still owned when the session title/artist matches, so we do not pause mid-video as a “foreign” track.
+After a video is playing, pause/skip/position still go through MediaController. Tidal’s MediaSession media id often differs from the catalog id for **audio and video**; party reclaim treats the queued item as still owned when the session title/artist matches (including “Official Video” suffixes) or the ids match after stripping URI / country suffixes. Videos also get a longer launch-grace window. Stale session events from an already-sung audio track are ignored so they cannot skip the video that is starting.

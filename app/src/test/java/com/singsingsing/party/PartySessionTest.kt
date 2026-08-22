@@ -15,6 +15,7 @@ class PartySessionTest {
         var pauseCount = 0
         var skipToNextCount = 0
         var ready = true
+        var playResult = true
         override fun isReady() = ready
         override fun play() = Unit
         override fun pause() {
@@ -27,7 +28,7 @@ class PartySessionTest {
         override fun skipToQueueItem(queueItemId: Long) = true
         override suspend fun playTrack(track: TrackRef): Boolean {
             played += track
-            return true
+            return playResult
         }
         override fun readQueue(): List<BridgeQueueItem> = emptyList()
     }
@@ -323,6 +324,95 @@ class PartySessionTest {
     }
 
     @Test
+    fun audioWithMismatchedMediaIdAndSameTitleDoesNotPause() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "35778985",
+                title = "Dishes",
+                artist = "Pulp",
+                durationSeconds = 200,
+            ),
+        )
+
+        party.onTidalMetadata("35778985", "Dishes", "Pulp", positionMs = 500, playing = true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "session-other",
+            title = "Dishes",
+            artist = "Pulp",
+            positionMs = 2_000,
+            playing = true,
+        )
+
+        assertThat(bridge.pauseCount).isEqualTo(0)
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("35778985")
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isTrue()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("35778985")
+        assertThat(party.snapshot.value.nowPlaying.positionMs).isEqualTo(2_000)
+    }
+
+    @Test
+    fun audioWithNormalizedCountrySuffixIdCountsAsOwned() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "73416054",
+                title = "Hanging On The Telephone",
+                artist = "Blondie",
+                durationSeconds = 200,
+            ),
+        )
+
+        party.onTidalMetadata("73416054", "Hanging On The Telephone", "Blondie", 500, true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "73416054-US",
+            title = "Hanging On The Telephone",
+            artist = "Blondie",
+            positionMs = 3_000,
+            playing = true,
+        )
+
+        assertThat(bridge.pauseCount).isEqualTo(0)
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isTrue()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("73416054")
+        assertThat(party.snapshot.value.nowPlaying.positionMs).isEqualTo(3_000)
+    }
+
+    @Test
+    fun audioWithMismatchedIdAndDifferentTitleStillReclaims() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A", durationSeconds = 200))
+        party.addTrack(guest.id, TrackRef("2", "Two", "B", durationSeconds = 200))
+
+        party.onTidalMetadata("1", "One", "A", positionMs = 1_000, playing = true)
+        clock += 5_000
+
+        party.onTidalMetadata(
+            trackId = "session-other",
+            title = "Radio filler",
+            artist = "Tidal",
+            positionMs = 0,
+            playing = true,
+        )
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "2").inOrder()
+        assertThat(bridge.pauseCount).isAtLeast(1)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+    }
+
+    @Test
     fun videoWithDifferentTitleStillReclaims() = runTest {
         var clock = 1_000_000L
         val (party, bridge) = session(nowMs = { clock })
@@ -340,7 +430,7 @@ class PartySessionTest {
         party.addTrack(guest.id, TrackRef("2", "Two", "B", durationSeconds = 200))
 
         party.onTidalMetadata("v1", "Wolf Like Me", "TV On The Radio", positionMs = 500, playing = true)
-        clock += 5_000
+        clock += 25_000
 
         party.onTidalMetadata(
             trackId = "radio-1",
@@ -352,6 +442,97 @@ class PartySessionTest {
 
         assertThat(bridge.pauseCount).isAtLeast(1)
         assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("2")
+    }
+
+    @Test
+    fun leftoverHistoryAudioDoesNotSkipQueuedVideoAfterGrace() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(guest.id, TrackRef("1", "One", "A", durationSeconds = 200))
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "v1",
+                title = "Wolf Like Me",
+                artist = "TV On The Radio",
+                durationSeconds = 200,
+                mediaType = MEDIA_TYPE_VIDEO,
+            ),
+        )
+        party.addTrack(guest.id, TrackRef("3", "Three", "C", durationSeconds = 200))
+
+        party.onTidalMetadata("1", "One", "A", positionMs = 1_000, playing = true)
+        party.skip(guest.id)
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("v1")
+
+        clock += 25_000
+        party.onTidalMetadata(
+            trackId = "1",
+            title = "One",
+            artist = "A",
+            positionMs = 12_000,
+            playing = false,
+        )
+
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("1", "v1").inOrder()
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("v1")
+        assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId }).containsExactly("3")
+    }
+
+    @Test
+    fun officialVideoTitleStillOwnsQueuedVideo() = runTest {
+        var clock = 1_000_000L
+        val (party, bridge) = session(nowMs = { clock })
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "v1",
+                title = "Wolf Like Me",
+                artist = "TV On The Radio",
+                durationSeconds = 200,
+                mediaType = MEDIA_TYPE_VIDEO,
+            ),
+        )
+        party.addTrack(guest.id, TrackRef("2", "Two", "B", durationSeconds = 200))
+
+        clock += 25_000
+        party.onTidalMetadata(
+            trackId = "session-video",
+            title = "Wolf Like Me (Official Video)",
+            artist = "TV On The Radio",
+            positionMs = 2_000,
+            playing = true,
+        )
+
+        assertThat(bridge.pauseCount).isEqualTo(0)
+        assertThat(bridge.played.map { it.tidalTrackId }).containsExactly("v1")
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("v1")
+        assertThat(party.snapshot.value.nowPlaying.positionMs).isEqualTo(2_000)
+    }
+
+    @Test
+    fun failedVideoStartDoesNotAdvanceQueue() = runTest {
+        val (party, bridge) = session()
+        bridge.playResult = false
+        val guest = party.join("Ada")
+        party.addTrack(
+            guest.id,
+            TrackRef(
+                tidalTrackId = "v1",
+                title = "Wolf Like Me",
+                artist = "TV On The Radio",
+                mediaType = MEDIA_TYPE_VIDEO,
+            ),
+        )
+        party.addTrack(guest.id, TrackRef("2", "Two", "B"))
+
+        assertThat(party.snapshot.value.nowPlaying.track?.tidalTrackId).isEqualTo("v1")
+        assertThat(party.snapshot.value.queue.map { it.track.tidalTrackId }).containsExactly("2")
+        assertThat(party.snapshot.value.nowPlaying.isPlaying).isFalse()
+        assertThat(party.snapshot.value.messages.map { it.text })
+            .contains("Could not start Wolf Like Me on Tidal")
     }
 
     @Test

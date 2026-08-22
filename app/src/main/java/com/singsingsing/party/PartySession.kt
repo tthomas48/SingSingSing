@@ -1,9 +1,11 @@
 package com.singsingsing.party
 
+import android.util.Log
 import com.singsingsing.bridge.TidalBridge
 import com.singsingsing.lyrics.LrcLibClient
 import com.singsingsing.lyrics.LyricsOpener
 import com.singsingsing.tidal.TidalCatalogClient
+import com.singsingsing.tidal.TidalMediaIds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -148,7 +150,7 @@ class PartySession(
                 error("Host hasn't set a karaoke library yet")
             }
         }
-        tidalCatalog.addTrackToLibrary(track.tidalTrackId, track.mediaType)
+        tidalCatalog.addTrackToLibrary(track)
         mutex.withLock {
             val guest = requireGuestLocked(guestId)
             val libraryName = tidalCatalog.libraryPlaylistName() ?: "library"
@@ -233,18 +235,31 @@ class PartySession(
         }
         val our = queue.nowPlaying()
         val launching = nowMs() < playLaunchUntilEpochMs
-        val ownsById = trackId != null && trackId == our?.track?.tidalTrackId
-        // Video deep links often surface a different MediaSession media id than the
-        // Tidal video catalog id. Treat matching title as still "ours" so we do not
-        // pause mid-video as a foreign reclaim.
-        val ownsByVideoMetadata = our?.track?.isVideo == true &&
-            metadataMatchesQueuedLocked(our.track, title, artist)
-        val ownsTrack = ownsById || ownsByVideoMetadata
-        val historyTrackIds = queue.snapshotHistory().map { it.track.tidalTrackId }.toSet()
+        val ownsById = TidalMediaIds.sameId(trackId, our?.track?.tidalTrackId)
+        // MediaSession media ids often differ from catalog ids for both audio and video.
+        // Matching title/artist still means we own the session.
+        val ownsByMetadata = our != null &&
+            TidalMediaIds.metadataMatches(our.track, title, artist)
+        val ownsTrack = ownsById || ownsByMetadata
+        val sessionId = TidalMediaIds.normalize(trackId)
+        val historyTrackIds = queue.snapshotHistory()
+            .map { TidalMediaIds.normalize(it.track.tidalTrackId) }
+            .filter { it.isNotBlank() }
+            .toSet()
 
         // Stale MediaSession events from already-sung tracks must not overwrite
         // position or trigger reclaim / near-end against the wrong song.
-        if (our != null && trackId != null && !ownsTrack && trackId in historyTrackIds) {
+        if (our != null && sessionId.isNotBlank() && !ownsTrack && sessionId in historyTrackIds) {
+            logMetadataDecision(
+                action = "ignore-stale",
+                trackId = trackId,
+                title = title,
+                queuedId = our.track.tidalTrackId,
+                ownsById = ownsById,
+                ownsByMetadata = ownsByMetadata,
+                launching = launching,
+                positionMs = positionMs,
+            )
             return@withLock
         }
 
@@ -256,14 +271,36 @@ class PartySession(
         if (our != null && !launching) {
             if (ownsTrack && shouldAdvanceNearEndLocked(our)) {
                 nearEndAdvanceArmed = false
+                logMetadataDecision(
+                    action = "near-end",
+                    trackId = trackId,
+                    title = title,
+                    queuedId = our.track.tidalTrackId,
+                    ownsById = ownsById,
+                    ownsByMetadata = ownsByMetadata,
+                    launching = launching,
+                    positionMs = positionMs,
+                )
                 bridge?.pause()
                 startNextLocked(skipCurrent = true)
                 return@withLock
             }
 
-            if (trackId != null && !ownsTrack && trackId !in historyTrackIds) {
+            if (trackId != null && !ownsTrack && sessionId !in historyTrackIds) {
                 // Tidal advanced on its own (play-next / radio / autoplay).
-                if (lastObservedTidalTrackId != null && trackId != lastObservedTidalTrackId) {
+                if (lastObservedTidalTrackId != null &&
+                    !TidalMediaIds.sameId(trackId, lastObservedTidalTrackId)
+                ) {
+                    logMetadataDecision(
+                        action = "reclaim",
+                        trackId = trackId,
+                        title = title,
+                        queuedId = our.track.tidalTrackId,
+                        ownsById = ownsById,
+                        ownsByMetadata = ownsByMetadata,
+                        launching = launching,
+                        positionMs = positionMs,
+                    )
                     bridge?.pause()
                     isPlaying = false
                     if (queue.snapshotQueue().isNotEmpty()) {
@@ -280,6 +317,17 @@ class PartySession(
         if (!launching || trackId == null || ownsTrack) {
             lastObservedTidalTrackId = trackId ?: lastObservedTidalTrackId
         }
+
+        logMetadataDecision(
+            action = if (launching && !ownsTrack) "launch-ignore" else "update",
+            trackId = trackId,
+            title = title,
+            queuedId = our?.track?.tidalTrackId,
+            ownsById = ownsById,
+            ownsByMetadata = ownsByMetadata,
+            launching = launching,
+            positionMs = positionMs,
+        )
 
         if (our == null && !title.isNullOrBlank()) {
             // Reflect Tidal's current track when our queue has not started yet.
@@ -311,21 +359,24 @@ class PartySession(
     private fun requireGuestLocked(guestId: String): Guest =
         guests[guestId] ?: error("Unknown guest")
 
-    /**
-     * Loose title/artist match used when a queued video's MediaSession media id
-     * does not equal the catalog video id.
-     */
-    private fun metadataMatchesQueuedLocked(
-        track: TrackRef,
+    private fun logMetadataDecision(
+        action: String,
+        trackId: String?,
         title: String?,
-        artist: String?,
-    ): Boolean {
-        if (title.isNullOrBlank()) return false
-        if (title.equals(track.title, ignoreCase = true)) return true
-        val artistNeedle = track.artist.substringBefore(",").trim()
-        if (artistNeedle.isBlank() || artist.isNullOrBlank()) return false
-        return artist.contains(artistNeedle, ignoreCase = true) &&
-            title.contains(track.title.take(12), ignoreCase = true)
+        queuedId: String?,
+        ownsById: Boolean,
+        ownsByMetadata: Boolean,
+        launching: Boolean,
+        positionMs: Long,
+    ) {
+        val durationMs = queue.nowPlaying()?.track?.durationSeconds?.times(1000L) ?: 0L
+        val remaining = if (durationMs > 0L) durationMs - positionMs else -1L
+        Log.i(
+            TAG,
+            "metadata action=$action sessionId=$trackId title=$title queuedId=$queuedId " +
+                "ownsById=$ownsById ownsByMetadata=$ownsByMetadata launching=$launching " +
+                "pos=$positionMs remaining=$remaining",
+        )
     }
 
     private fun shouldAdvanceNearEndLocked(our: QueueItem): Boolean {
@@ -339,6 +390,9 @@ class PartySession(
         if (!isPlaying && remaining in 0..(NEAR_END_WINDOW_MS + 1_000L)) return true
         return false
     }
+
+    private fun launchGraceMs(track: TrackRef): Long =
+        if (track.isVideo) VIDEO_PLAY_LAUNCH_GRACE_MS else PLAY_LAUNCH_GRACE_MS
 
     private suspend fun startNextLocked(skipCurrent: Boolean = false) {
         val next = if (skipCurrent) queue.skip() else {
@@ -361,7 +415,8 @@ class PartySession(
             return
         }
         restoredQueueDormant = false
-        playLaunchUntilEpochMs = nowMs() + PLAY_LAUNCH_GRACE_MS
+        val graceMs = launchGraceMs(item.track)
+        playLaunchUntilEpochMs = nowMs() + graceMs
         nearEndAdvanceArmed = true
         val played = bridge.playTrack(item.track)
         if (!played) {
@@ -371,7 +426,7 @@ class PartySession(
             isPlaying = true
             positionMs = 0
             lastObservedTidalTrackId = item.track.tidalTrackId
-            playLaunchUntilEpochMs = nowMs() + PLAY_LAUNCH_GRACE_MS
+            playLaunchUntilEpochMs = nowMs() + graceMs
             lyricsOpener?.openLyricsBestEffort()
         }
     }
@@ -418,7 +473,9 @@ class PartySession(
     }
 
     companion object {
+        private const val TAG = "PartySession"
         private const val NEAR_END_WINDOW_MS = 2_500L
         private const val PLAY_LAUNCH_GRACE_MS = 4_000L
+        private const val VIDEO_PLAY_LAUNCH_GRACE_MS = 20_000L
     }
 }

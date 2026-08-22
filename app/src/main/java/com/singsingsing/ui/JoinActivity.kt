@@ -77,6 +77,8 @@ class JoinActivity : AppCompatActivity() {
                     SingAlongApp.instance.tidalCatalog.getLibraryTracks()
                     SingAlongApp.instance.partySession.refreshLibrarySnapshot()
                 }
+            }.onFailure { error ->
+                android.util.Log.e("JoinActivity", "Could not preload karaoke library", error)
             }
         }
     }

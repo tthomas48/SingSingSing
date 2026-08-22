@@ -65,6 +65,7 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = false
+        unitTests.isReturnDefaultValues = true
     }
 
     packaging {
@@ -105,4 +106,5 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("com.google.truth:truth:1.4.4")
+    testImplementation("io.ktor:ktor-client-mock:$ktor")
 }

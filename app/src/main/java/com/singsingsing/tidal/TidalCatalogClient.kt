@@ -316,12 +316,34 @@ class TidalCatalogClient(
         return collected.distinctBy { it.tidalTrackId }
     }
 
-    suspend fun addTrackToLibrary(trackId: String, mediaType: String = MEDIA_TYPE_TRACK) {
+    suspend fun addTrackToLibrary(track: TrackRef) {
         val playlistId = authClient.libraryPlaylistId()
             ?: error("Host hasn't set a karaoke library yet")
-        addTrackToPlaylist(playlistId, trackId, mediaType)
-        invalidateLibraryCache()
-        getLibraryTracks(forceRefresh = true)
+        try {
+            addTrackToPlaylist(playlistId, track.tidalTrackId, track.mediaType)
+        } catch (error: TidalApiException) {
+            if (!error.isAlreadyInPlaylist) {
+                throw IllegalStateException(error.message ?: "Couldn't add to the karaoke library")
+            }
+            Log.i(TidalApiLog.TAG, "Track already in library playlist id=${track.tidalTrackId}")
+        }
+        rememberTrackInLibrary(playlistId, track)
+        runCatching { getLibraryTracks(forceRefresh = true) }
+            .onFailure { error ->
+                Log.w(TidalApiLog.TAG, "Library refresh after heart failed id=${track.tidalTrackId}", error)
+            }
+    }
+
+    private fun rememberTrackInLibrary(playlistId: String, track: TrackRef) {
+        val existing = libraryCache?.takeIf { it.playlistId == playlistId }?.tracks
+            ?: libraryTrackCache?.load(playlistId)
+            ?: emptyList()
+        val merged = if (existing.any { it.tidalTrackId == track.tidalTrackId }) {
+            existing
+        } else {
+            existing + track
+        }
+        rememberLibraryTracks(playlistId, merged)
     }
 
     suspend fun addTrackToPlaylist(

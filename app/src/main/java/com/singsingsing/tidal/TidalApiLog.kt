@@ -9,11 +9,13 @@ import io.ktor.client.request.request
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
  * Thin wrapper that logs Tidal HTTP request URL/status/body for logcat debugging
- * (`adb logcat -s TidalApi`).
+ * (`adb logcat -s TidalApi`). Guest-facing messages never include URLs — the party
+ * server hides any error text containing "http".
  */
 internal object TidalApiLog {
     const val TAG = "TidalApi"
@@ -51,7 +53,11 @@ internal object TidalApiLog {
             val bodyText = response.bodyAsText()
             logResponse(response.status, bodyText)
             if (response.status.value >= 400) {
-                error("Tidal ${method.value} $url failed: HTTP ${response.status.value} $bodyText")
+                throw TidalApiException(
+                    status = response.status.value,
+                    body = bodyText,
+                    userMessage = userFacingError(response.status.value, bodyText),
+                )
             }
             @Suppress("UNCHECKED_CAST")
             when (T::class) {
@@ -59,24 +65,28 @@ internal object TidalApiLog {
                 String::class -> bodyText as T
                 else -> {
                     if (bodyText.isBlank()) {
-                        error("Tidal ${method.value} $url returned empty body")
+                        error("Tidal returned an empty response")
                     }
                     json.decodeFromString(bodyText)
                 }
             }
+        } catch (error: TidalApiException) {
+            throw error
         } catch (error: ClientRequestException) {
             val bodyText = runCatching { error.response.bodyAsText() }.getOrNull().orEmpty()
             logResponse(error.response.status, bodyText)
-            throw IllegalStateException(
-                "Tidal ${method.value} $url failed: HTTP ${error.response.status.value} $bodyText",
-                error,
+            throw TidalApiException(
+                status = error.response.status.value,
+                body = bodyText,
+                userMessage = userFacingError(error.response.status.value, bodyText),
             )
         } catch (error: ServerResponseException) {
             val bodyText = runCatching { error.response.bodyAsText() }.getOrNull().orEmpty()
             logResponse(error.response.status, bodyText)
-            throw IllegalStateException(
-                "Tidal ${method.value} $url failed: HTTP ${error.response.status.value} $bodyText",
-                error,
+            throw TidalApiException(
+                status = error.response.status.value,
+                body = bodyText,
+                userMessage = userFacingError(error.response.status.value, bodyText),
             )
         } catch (error: IllegalStateException) {
             throw error
@@ -102,4 +112,54 @@ internal object TidalApiLog {
             Log.i(TAG, "← HTTP ${status.value} $clipped")
         }
     }
+
+    fun userFacingError(status: Int, body: String): String {
+        val detail = jsonApiErrorDetail(body)
+            ?.takeIf { it.isNotBlank() && !it.contains("http", ignoreCase = true) }
+        if (!detail.isNullOrBlank()) return detail
+        return "Couldn't update the karaoke library (status $status)"
+    }
+
+    fun isAlreadyInPlaylist(status: Int, body: String): Boolean {
+        if (status == HttpStatusCode.Conflict.value) return true
+        val haystack = listOfNotNull(body, jsonApiErrorDetail(body))
+            .joinToString(" ")
+            .lowercase()
+        if (haystack.isBlank()) return false
+        return "duplicate" in haystack ||
+            ("already" in haystack && ("exist" in haystack || "playlist" in haystack || "item" in haystack))
+    }
+
+    internal fun jsonApiErrorDetail(body: String): String? {
+        if (body.isBlank()) return null
+        val parsed = runCatching {
+            json.decodeFromString(JsonApiErrorDocument.serializer(), body)
+        }.getOrNull() ?: return null
+        return parsed.errors
+            .orEmpty()
+            .mapNotNull { it.detail?.takeIf { detail -> detail.isNotBlank() } ?: it.title }
+            .firstOrNull()
+    }
 }
+
+internal class TidalApiException(
+    val status: Int,
+    val body: String,
+    userMessage: String,
+) : IllegalStateException(userMessage) {
+    val isAlreadyInPlaylist: Boolean
+        get() = TidalApiLog.isAlreadyInPlaylist(status, body)
+}
+
+@Serializable
+internal data class JsonApiErrorDocument(
+    val errors: List<JsonApiError>? = null,
+)
+
+@Serializable
+internal data class JsonApiError(
+    val status: String? = null,
+    val code: String? = null,
+    val title: String? = null,
+    val detail: String? = null,
+)

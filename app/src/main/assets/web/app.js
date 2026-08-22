@@ -613,6 +613,7 @@ function buildQueueItem(item, { history, index = 0, count = 0, inLibrary }) {
         <span>${escapeHtml(item.track.artist)} · added by ${escapeHtml(item.addedByName)}</span>
       </div>
       <div class="queue-actions">
+        <button type="button" class="heart ${hearted ? "filled" : ""}" data-heart aria-label="${hearted ? "In library" : "Add to karaoke library"}">${ICONS.heart}</button>
         <button type="button" data-play aria-label="Jump back to this track">${ICONS.play}</button>
       </div>
     `
